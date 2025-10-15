@@ -1,0 +1,31 @@
+{
+  "name": "ipcalc2",
+  "version": "1.0.0",
+  "description": "IP calculator application built with Vue.js and TypeScript",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "@primevue/themes": "^4.4.0",
+    "@vuebits/ui": "^0.6.0",
+    "gsap": "^3.13.0",
+    "ogl": "^1.0.11",
+    "primeicons": "^7.0.0",
+    "primevue": "^4.4.0",
+    "vue": "^3.4.0",
+    "vuetify": "^3.10.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.5.0",
+    "typescript": "^5.9.2",
+    "vite": "^5.0.0",
+    "vite-plugin-vuetify": "^2.1.2",
+    "vue-tsc": "^1.8.0"
+  },
+  "type": "module"
+}
