@@ -46,7 +46,7 @@ jobs:
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
             ./dist/ \
-            ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:${{ env.DEPLOY_PATH }}
+            ${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}:${{ vars.DEPLOY_PATH }}
       
       # Alternative Step 6: Deploy using scp (if you prefer scp over rsync)
       # - name: Deploy to server (using scp)
