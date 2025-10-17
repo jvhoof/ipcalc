@@ -69,30 +69,41 @@
       </v-card>
 
       <v-card v-if="result" class="mt-4" variant="outlined">
-        <v-card-title class="text-h6" style="background-color: #104581; color: white;">Binary</v-card-title>
-        <v-card-text>
-          <v-list density="compact">
-            <v-list-item>
-              <v-list-item-title>IP Address</v-list-item-title>
-              <v-list-item-subtitle style="font-family: monospace;">{{ result.ipBinary }}</v-list-item-subtitle>
-            </v-list-item>
+        <v-card-title
+          class="text-h6"
+          style="background-color: #104581; color: white; cursor: pointer; display: flex; align-items: center; justify-content: space-between;"
+          @click="isBinaryCollapsed = !isBinaryCollapsed"
+        >
+          Binary
+          <v-icon
+            :icon="isBinaryCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'"
+          ></v-icon>
+        </v-card-title>
+        <v-expand-transition>
+          <v-card-text v-show="!isBinaryCollapsed">
+            <v-list density="compact">
+              <v-list-item>
+                <v-list-item-title>IP Address</v-list-item-title>
+                <v-list-item-subtitle style="font-family: monospace;">{{ result.ipBinary }}</v-list-item-subtitle>
+              </v-list-item>
 
-            <v-list-item>
-              <v-list-item-title>Netmask</v-list-item-title>
-              <v-list-item-subtitle style="font-family: monospace;">{{ result.netmaskBinary }}</v-list-item-subtitle>
-            </v-list-item>
+              <v-list-item>
+                <v-list-item-title>Netmask</v-list-item-title>
+                <v-list-item-subtitle style="font-family: monospace;">{{ result.netmaskBinary }}</v-list-item-subtitle>
+              </v-list-item>
 
-            <v-list-item>
-              <v-list-item-title>Network</v-list-item-title>
-              <v-list-item-subtitle style="font-family: monospace;">{{ result.networkBinary }}</v-list-item-subtitle>
-            </v-list-item>
+              <v-list-item>
+                <v-list-item-title>Network</v-list-item-title>
+                <v-list-item-subtitle style="font-family: monospace;">{{ result.networkBinary }}</v-list-item-subtitle>
+              </v-list-item>
 
-            <v-list-item>
-              <v-list-item-title>Broadcast</v-list-item-title>
-              <v-list-item-subtitle style="font-family: monospace;">{{ result.broadcastBinary }}</v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
-        </v-card-text>
+              <v-list-item>
+                <v-list-item-title>Broadcast</v-list-item-title>
+                <v-list-item-subtitle style="font-family: monospace;">{{ result.broadcastBinary }}</v-list-item-subtitle>
+              </v-list-item>
+            </v-list>
+          </v-card-text>
+        </v-expand-transition>
       </v-card>
     </v-card-text>
   </v-card>
@@ -117,6 +128,7 @@ interface SubnetResult {
 
 const networkCidr = ref<string>(getDefaultCidr('onpremises'))
 const result = ref<SubnetResult | null>(null)
+const isBinaryCollapsed = ref<boolean>(false)
 
 const parseCIDR = (cidr: string): { ip: number[], prefix: number } | null => {
   const parts = cidr.split('/')
