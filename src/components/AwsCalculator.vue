@@ -240,9 +240,9 @@
       <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
         <div class="text-body-2">
           <strong>AWS VPC Requirements:</strong><br>
-          • First 4 IPs and last IP are reserved by AWS<br>
-          • Minimum subnet size: /28 (16 IPs, 11 usable)<br>
-          • VPC CIDR range: /16 to /28
+          • {{ awsConfig.reservedIpCount }} IPs are reserved by AWS (First 4 IPs and last IP)<br>
+          • Minimum subnet size: /{{ awsConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - awsConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - awsConfig.minCidrPrefix) - awsConfig.reservedIpCount }} usable)<br>
+          • VPC CIDR range: /{{ awsConfig.maxCidrPrefix }} to /{{ awsConfig.minCidrPrefix }}
         </div>
       </v-alert>
     </v-card-text>
@@ -252,9 +252,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { getThemeStyles } from '../config/cloudThemes'
-import { getDefaultCidr } from '../config/defaultCidr'
+import { getCloudProviderConfig } from '../config/cloudProviderConfig'
 
 const themeStyles = getThemeStyles('aws')
+const awsConfig = getCloudProviderConfig('aws')
 
 interface VPCInfo {
   network: string
@@ -274,8 +275,8 @@ interface Subnet {
   availabilityZone: string
 }
 
-const vpcCidr = ref<string>(getDefaultCidr('aws'))
-const numberOfSubnets = ref<number>(3)
+const vpcCidr = ref<string>(awsConfig.defaultCidr)
+const numberOfSubnets = ref<number>(awsConfig.defaultSubnetCount)
 const vpcInfo = ref<VPCInfo | null>(null)
 const subnets = ref<Subnet[]>([])
 const errorMessage = ref<string>('')
@@ -283,7 +284,7 @@ const showCodeDialog = ref<boolean>(false)
 const generatedCode = ref<string>('')
 const codeDialogTitle = ref<string>('')
 
-const availabilityZones = ['us-east-1a', 'us-east-1b', 'us-east-1c', 'us-east-1d', 'us-east-1e', 'us-east-1f']
+const availabilityZones = awsConfig.availabilityZones
 
 const parseIP = (ip: string): number[] | null => {
   const parts = ip.split('.')
@@ -304,7 +305,7 @@ const parseCIDR = (cidr: string): { ip: number[], prefix: number } | null => {
   const ip = parseIP(parts[0])
   const prefix = parseInt(parts[1], 10)
 
-  if (!ip || isNaN(prefix) || prefix < 16 || prefix > 28) {
+  if (!ip || isNaN(prefix) || prefix < awsConfig.maxCidrPrefix || prefix > awsConfig.minCidrPrefix) {
     return null
   }
 
@@ -343,7 +344,7 @@ const getCurrentVPCCIDR = (): number | null => {
 
 const incrementVPCCIDR = (): void => {
   const cidr = getCurrentVPCCIDR()
-  if (cidr !== null && cidr < 28) {
+  if (cidr !== null && cidr < awsConfig.minCidrPrefix) {
     const parts = vpcCidr.value.split('/')
     vpcCidr.value = `${parts[0]}/${cidr + 1}`
     calculateVPC()
@@ -352,7 +353,7 @@ const incrementVPCCIDR = (): void => {
 
 const decrementVPCCIDR = (): void => {
   const cidr = getCurrentVPCCIDR()
-  if (cidr !== null && cidr > 16) {
+  if (cidr !== null && cidr > awsConfig.maxCidrPrefix) {
     const parts = vpcCidr.value.split('/')
     vpcCidr.value = `${parts[0]}/${cidr - 1}`
     calculateVPC()
@@ -401,9 +402,9 @@ const calculateVPC = (): void => {
     const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets.value))
     const subnetPrefix = prefix + bitsNeeded
 
-    // AWS minimum is /28
-    if (subnetPrefix > 28) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /28 (AWS minimum).`
+    // Check against AWS minimum
+    if (subnetPrefix > awsConfig.minCidrPrefix) {
+      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /${awsConfig.minCidrPrefix} (AWS minimum).`
       return
     }
 
@@ -430,7 +431,7 @@ const calculateVPC = (): void => {
         numberToIP(subnetNetworkNum + subnetSize - 1).join('.') // x.x.x.255 - Broadcast
       ]
 
-      const usableIPs = subnetSize - 5 // Subtract 5 reserved IPs
+      const usableIPs = subnetSize - awsConfig.reservedIpCount
       const firstUsable = numberToIP(subnetNetworkNum + 4).join('.')
       const lastUsable = numberToIP(subnetNetworkNum + subnetSize - 2).join('.')
 

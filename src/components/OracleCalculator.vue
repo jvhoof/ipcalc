@@ -219,9 +219,9 @@
       <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
         <div class="text-body-2">
           <strong>Oracle Cloud VCN Requirements:</strong><br>
-          • First 2 IPs and last IP in each subnet are reserved by OCI<br>
-          • Minimum subnet size: /30 (4 IPs, 1 usable)<br>
-          • VCN CIDR range: /16 to /30<br>
+          • {{ oracleConfig.reservedIpCount }} IPs are reserved by OCI (First 2 IPs and last IP)<br>
+          • Minimum subnet size: /{{ oracleConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - oracleConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - oracleConfig.minCidrPrefix) - oracleConfig.reservedIpCount }} usable)<br>
+          • VCN CIDR range: /{{ oracleConfig.maxCidrPrefix }} to /{{ oracleConfig.minCidrPrefix }}<br>
           • No broadcast addresses in OCI VCNs
         </div>
       </v-alert>
@@ -232,9 +232,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { getThemeStyles } from '../config/cloudThemes'
-import { getDefaultCidr } from '../config/defaultCidr'
+import { getCloudProviderConfig } from '../config/cloudProviderConfig'
 
 const themeStyles = getThemeStyles('oracle')
+const oracleConfig = getCloudProviderConfig('oracle')
 
 interface VCNInfo {
   network: string
@@ -254,8 +255,8 @@ interface Subnet {
   availabilityDomain: string
 }
 
-const vcnCidr = ref<string>(getDefaultCidr('oracle'))
-const numberOfSubnets = ref<number>(3)
+const vcnCidr = ref<string>(oracleConfig.defaultCidr)
+const numberOfSubnets = ref<number>(oracleConfig.defaultSubnetCount)
 const vcnInfo = ref<VCNInfo | null>(null)
 const subnets = ref<Subnet[]>([])
 const errorMessage = ref<string>('')
@@ -263,7 +264,7 @@ const showCodeDialog = ref<boolean>(false)
 const generatedCode = ref<string>('')
 const codeDialogTitle = ref<string>('')
 
-const availabilityDomains = ['AD-1', 'AD-2', 'AD-3']
+const availabilityDomains = oracleConfig.availabilityZones
 
 const parseIP = (ip: string): number[] | null => {
   const parts = ip.split('.')
@@ -284,7 +285,7 @@ const parseCIDR = (cidr: string): { ip: number[], prefix: number } | null => {
   const ip = parseIP(parts[0])
   const prefix = parseInt(parts[1], 10)
 
-  if (!ip || isNaN(prefix) || prefix < 16 || prefix > 30) {
+  if (!ip || isNaN(prefix) || prefix < oracleConfig.maxCidrPrefix || prefix > oracleConfig.minCidrPrefix) {
     return null
   }
 
@@ -323,7 +324,7 @@ const getCurrentVCNCIDR = (): number | null => {
 
 const incrementVCNCIDR = (): void => {
   const cidr = getCurrentVCNCIDR()
-  if (cidr !== null && cidr < 30) {
+  if (cidr !== null && cidr < oracleConfig.minCidrPrefix) {
     const parts = vcnCidr.value.split('/')
     vcnCidr.value = `${parts[0]}/${cidr + 1}`
     calculateVCN()
@@ -332,7 +333,7 @@ const incrementVCNCIDR = (): void => {
 
 const decrementVCNCIDR = (): void => {
   const cidr = getCurrentVCNCIDR()
-  if (cidr !== null && cidr > 16) {
+  if (cidr !== null && cidr > oracleConfig.maxCidrPrefix) {
     const parts = vcnCidr.value.split('/')
     vcnCidr.value = `${parts[0]}/${cidr - 1}`
     calculateVCN()
@@ -381,9 +382,9 @@ const calculateVCN = (): void => {
     const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets.value))
     const subnetPrefix = prefix + bitsNeeded
 
-    // OCI minimum is /30
-    if (subnetPrefix > 30) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /30 (OCI minimum).`
+    // Check against OCI minimum
+    if (subnetPrefix > oracleConfig.minCidrPrefix) {
+      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /${oracleConfig.minCidrPrefix} (OCI minimum).`
       return
     }
 
@@ -408,7 +409,7 @@ const calculateVCN = (): void => {
         numberToIP(subnetNetworkNum + subnetSize - 1).join('.') // x.x.x.255 - Last address (reserved)
       ]
 
-      const usableIPs = subnetSize - 3 // Subtract 3 reserved IPs
+      const usableIPs = subnetSize - oracleConfig.reservedIpCount
       const firstUsable = numberToIP(subnetNetworkNum + 2).join('.')
       const lastUsable = numberToIP(subnetNetworkNum + subnetSize - 2).join('.')
 

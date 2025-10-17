@@ -224,9 +224,9 @@
       <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
         <div class="text-body-2">
           <strong>GCP VPC Requirements:</strong><br>
-          • First 2 IPs and last 2 IPs in each subnet are reserved by GCP<br>
-          • Minimum subnet size: /29 (8 IPs, 4 usable)<br>
-          • Subnet CIDR range: /8 to /29<br>
+          • {{ gcpConfig.reservedIpCount }} IPs are reserved by GCP (First 2 IPs and last 2 IPs)<br>
+          • Minimum subnet size: /{{ gcpConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - gcpConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - gcpConfig.minCidrPrefix) - gcpConfig.reservedIpCount }} usable)<br>
+          • Subnet CIDR range: /{{ gcpConfig.maxCidrPrefix }} to /{{ gcpConfig.minCidrPrefix }}<br>
           • Subnets are regional resources
         </div>
       </v-alert>
@@ -237,9 +237,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { getThemeStyles } from '../config/cloudThemes'
-import { getDefaultCidr } from '../config/defaultCidr'
+import { getCloudProviderConfig } from '../config/cloudProviderConfig'
 
 const themeStyles = getThemeStyles('gcp')
+const gcpConfig = getCloudProviderConfig('gcp')
 
 interface VPCInfo {
   network: string
@@ -259,8 +260,8 @@ interface Subnet {
   region: string
 }
 
-const vpcCidr = ref<string>(getDefaultCidr('gcp'))
-const numberOfSubnets = ref<number>(3)
+const vpcCidr = ref<string>(gcpConfig.defaultCidr)
+const numberOfSubnets = ref<number>(gcpConfig.defaultSubnetCount)
 const vpcInfo = ref<VPCInfo | null>(null)
 const subnets = ref<Subnet[]>([])
 const errorMessage = ref<string>('')
@@ -268,7 +269,7 @@ const showCodeDialog = ref<boolean>(false)
 const generatedCode = ref<string>('')
 const codeDialogTitle = ref<string>('')
 
-const regions = ['us-central1', 'us-east1', 'us-west1', 'europe-west1', 'asia-east1', 'asia-southeast1']
+const regions = gcpConfig.availabilityZones
 
 const parseIP = (ip: string): number[] | null => {
   const parts = ip.split('.')
@@ -289,7 +290,7 @@ const parseCIDR = (cidr: string): { ip: number[], prefix: number } | null => {
   const ip = parseIP(parts[0])
   const prefix = parseInt(parts[1], 10)
 
-  if (!ip || isNaN(prefix) || prefix < 8 || prefix > 29) {
+  if (!ip || isNaN(prefix) || prefix < gcpConfig.maxCidrPrefix || prefix > gcpConfig.minCidrPrefix) {
     return null
   }
 
@@ -328,7 +329,7 @@ const getCurrentVPCCIDR = (): number | null => {
 
 const incrementVPCCIDR = (): void => {
   const cidr = getCurrentVPCCIDR()
-  if (cidr !== null && cidr < 29) {
+  if (cidr !== null && cidr < gcpConfig.minCidrPrefix) {
     const parts = vpcCidr.value.split('/')
     vpcCidr.value = `${parts[0]}/${cidr + 1}`
     calculateVPC()
@@ -337,7 +338,7 @@ const incrementVPCCIDR = (): void => {
 
 const decrementVPCCIDR = (): void => {
   const cidr = getCurrentVPCCIDR()
-  if (cidr !== null && cidr > 8) {
+  if (cidr !== null && cidr > gcpConfig.maxCidrPrefix) {
     const parts = vpcCidr.value.split('/')
     vpcCidr.value = `${parts[0]}/${cidr - 1}`
     calculateVPC()
@@ -386,9 +387,9 @@ const calculateVPC = (): void => {
     const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets.value))
     const subnetPrefix = prefix + bitsNeeded
 
-    // GCP minimum is /29
-    if (subnetPrefix > 29) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /29 (GCP minimum).`
+    // Check against GCP minimum
+    if (subnetPrefix > gcpConfig.minCidrPrefix) {
+      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /${gcpConfig.minCidrPrefix} (GCP minimum).`
       return
     }
 
@@ -414,7 +415,7 @@ const calculateVPC = (): void => {
         numberToIP(subnetNetworkNum + subnetSize - 1).join('.') // x.x.x.255 - Broadcast
       ]
 
-      const usableIPs = subnetSize - 4 // Subtract 4 reserved IPs
+      const usableIPs = subnetSize - gcpConfig.reservedIpCount
       const firstUsable = numberToIP(subnetNetworkNum + 2).join('.')
       const lastUsable = numberToIP(subnetNetworkNum + subnetSize - 3).join('.')
 

@@ -224,9 +224,9 @@
       <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
         <div class="text-body-2">
           <strong>Alibaba Cloud VPC Requirements:</strong><br>
-          • First 3 IPs and last 3 IPs in each vSwitch are reserved<br>
-          • Minimum vSwitch size: /29 (8 IPs, 2 usable)<br>
-          • VPC CIDR range: /8 to /24<br>
+          • {{ alicloudConfig.reservedIpCount }} IPs are reserved (First 3 IPs and last 3 IPs)<br>
+          • Minimum vSwitch size: /{{ alicloudConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - alicloudConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - alicloudConfig.minCidrPrefix) - alicloudConfig.reservedIpCount }} usable)<br>
+          • VPC CIDR range: /{{ alicloudConfig.maxCidrPrefix }} to /{{ alicloudConfig.minCidrPrefix }}<br>
           • vSwitches are zone-specific resources
         </div>
       </v-alert>
@@ -237,9 +237,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { getThemeStyles } from '../config/cloudThemes'
-import { getDefaultCidr } from '../config/defaultCidr'
+import { getCloudProviderConfig } from '../config/cloudProviderConfig'
 
 const themeStyles = getThemeStyles('alicloud')
+const alicloudConfig = getCloudProviderConfig('alicloud')
 
 interface VPCInfo {
   network: string
@@ -259,8 +260,8 @@ interface VSwitch {
   zone: string
 }
 
-const vpcCidr = ref<string>(getDefaultCidr('alicloud'))
-const numberOfVSwitches = ref<number>(3)
+const vpcCidr = ref<string>(alicloudConfig.defaultCidr)
+const numberOfVSwitches = ref<number>(alicloudConfig.defaultSubnetCount)
 const vpcInfo = ref<VPCInfo | null>(null)
 const vSwitches = ref<VSwitch[]>([])
 const errorMessage = ref<string>('')
@@ -268,7 +269,7 @@ const showCodeDialog = ref<boolean>(false)
 const generatedCode = ref<string>('')
 const codeDialogTitle = ref<string>('')
 
-const zones = ['cn-hangzhou-a', 'cn-hangzhou-b', 'cn-hangzhou-c', 'cn-hangzhou-d', 'cn-hangzhou-e', 'cn-hangzhou-f']
+const zones = alicloudConfig.availabilityZones
 
 const parseIP = (ip: string): number[] | null => {
   const parts = ip.split('.')
@@ -289,7 +290,7 @@ const parseCIDR = (cidr: string): { ip: number[], prefix: number } | null => {
   const ip = parseIP(parts[0])
   const prefix = parseInt(parts[1], 10)
 
-  if (!ip || isNaN(prefix) || prefix < 8 || prefix > 29) {
+  if (!ip || isNaN(prefix) || prefix < alicloudConfig.maxCidrPrefix || prefix > alicloudConfig.minCidrPrefix) {
     return null
   }
 
@@ -328,7 +329,7 @@ const getCurrentVPCCIDR = (): number | null => {
 
 const incrementVPCCIDR = (): void => {
   const cidr = getCurrentVPCCIDR()
-  if (cidr !== null && cidr < 29) {
+  if (cidr !== null && cidr < alicloudConfig.minCidrPrefix) {
     const parts = vpcCidr.value.split('/')
     vpcCidr.value = `${parts[0]}/${cidr + 1}`
     calculateVPC()
@@ -337,7 +338,7 @@ const incrementVPCCIDR = (): void => {
 
 const decrementVPCCIDR = (): void => {
   const cidr = getCurrentVPCCIDR()
-  if (cidr !== null && cidr > 8) {
+  if (cidr !== null && cidr > alicloudConfig.maxCidrPrefix) {
     const parts = vpcCidr.value.split('/')
     vpcCidr.value = `${parts[0]}/${cidr - 1}`
     calculateVPC()
@@ -386,9 +387,9 @@ const calculateVPC = (): void => {
     const bitsNeeded = Math.ceil(Math.log2(numberOfVSwitches.value))
     const vSwitchPrefix = prefix + bitsNeeded
 
-    // Alibaba Cloud minimum is /29
-    if (vSwitchPrefix > 29) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfVSwitches.value} vSwitches. Each vSwitch would be smaller than /29 (Alibaba Cloud minimum).`
+    // Check against Alibaba Cloud minimum
+    if (vSwitchPrefix > alicloudConfig.minCidrPrefix) {
+      errorMessage.value = `Cannot divide /${prefix} into ${numberOfVSwitches.value} vSwitches. Each vSwitch would be smaller than /${alicloudConfig.minCidrPrefix} (Alibaba Cloud minimum).`
       return
     }
 
@@ -416,7 +417,7 @@ const calculateVPC = (): void => {
         numberToIP(vSwitchNetworkNum + vSwitchSize - 1).join('.')  // x.x.x.255 - Last address
       ]
 
-      const usableIPs = vSwitchSize - 6 // Subtract 6 reserved IPs
+      const usableIPs = vSwitchSize - alicloudConfig.reservedIpCount
       const firstUsable = numberToIP(vSwitchNetworkNum + 3).join('.')
       const lastUsable = numberToIP(vSwitchNetworkNum + vSwitchSize - 4).join('.')
 

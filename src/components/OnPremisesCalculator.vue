@@ -100,7 +100,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { getDefaultCidr } from '../config/defaultCidr'
+import { getDefaultCidr } from '../config/cloudProviderConfig'
 
 interface SubnetResult {
   subnetMask: string

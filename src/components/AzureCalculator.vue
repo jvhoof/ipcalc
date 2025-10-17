@@ -247,9 +247,9 @@
       <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
         <div class="text-body-2">
           <strong>Azure VNet Requirements:</strong><br>
-          • First 4 IPs and last IP are reserved by Azure<br>
-          • Minimum subnet size: /29 (8 IPs, 3 usable)<br>
-          • Maximum subnet size: /8
+          • {{ azureConfig.reservedIpCount }} IPs are reserved by Azure (First 4 IPs and last IP)<br>
+          • Minimum subnet size: /{{ azureConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - azureConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - azureConfig.minCidrPrefix) - azureConfig.reservedIpCount }} usable)<br>
+          • Maximum subnet size: /{{ azureConfig.maxCidrPrefix }}
         </div>
       </v-alert>
     </v-card-text>
@@ -259,9 +259,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { getThemeStyles } from '../config/cloudThemes'
-import { getDefaultCidr } from '../config/defaultCidr'
+import { getCloudProviderConfig } from '../config/cloudProviderConfig'
 
 const themeStyles = getThemeStyles('azure')
+const azureConfig = getCloudProviderConfig('azure')
 
 interface VNetInfo {
   network: string
@@ -280,8 +281,8 @@ interface Subnet {
   usableRange: string
 }
 
-const vnetCidr = ref<string>(getDefaultCidr('azure'))
-const numberOfSubnets = ref<number>(4)
+const vnetCidr = ref<string>(azureConfig.defaultCidr)
+const numberOfSubnets = ref<number>(azureConfig.defaultSubnetCount)
 const vnetInfo = ref<VNetInfo | null>(null)
 const subnets = ref<Subnet[]>([])
 const errorMessage = ref<string>('')
@@ -347,7 +348,7 @@ const getCurrentVNetCIDR = (): number | null => {
 
 const incrementVNetCIDR = (): void => {
   const cidr = getCurrentVNetCIDR()
-  if (cidr !== null && cidr < 29) {
+  if (cidr !== null && cidr < azureConfig.minCidrPrefix) {
     const parts = vnetCidr.value.split('/')
     vnetCidr.value = `${parts[0]}/${cidr + 1}`
     calculateVNet()
@@ -356,7 +357,7 @@ const incrementVNetCIDR = (): void => {
 
 const decrementVNetCIDR = (): void => {
   const cidr = getCurrentVNetCIDR()
-  if (cidr !== null && cidr > 8) {
+  if (cidr !== null && cidr > azureConfig.maxCidrPrefix) {
     const parts = vnetCidr.value.split('/')
     vnetCidr.value = `${parts[0]}/${cidr - 1}`
     calculateVNet()
@@ -405,9 +406,9 @@ const calculateVNet = (): void => {
     const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets.value))
     const subnetPrefix = prefix + bitsNeeded
 
-    // Azure minimum is /29
-    if (subnetPrefix > 29) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /29 (Azure minimum).`
+    // Check against Azure minimum
+    if (subnetPrefix > azureConfig.minCidrPrefix) {
+      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /${azureConfig.minCidrPrefix} (Azure minimum).`
       return
     }
 
@@ -434,7 +435,7 @@ const calculateVNet = (): void => {
         numberToIP(subnetNetworkNum + subnetSize - 1).join('.') // x.x.x.255 - Broadcast
       ]
 
-      const usableIPs = subnetSize - 5 // Subtract 5 reserved IPs
+      const usableIPs = subnetSize - azureConfig.reservedIpCount
       const firstUsable = numberToIP(subnetNetworkNum + 4).join('.')
       const lastUsable = numberToIP(subnetNetworkNum + subnetSize - 2).join('.')
 
