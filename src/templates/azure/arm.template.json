@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "IP Calculator",
+      "version": "1.0.0"
+    }
+  },
+  "parameters": {
+    "prefix": {
+      "type": "string",
+      "defaultValue": "myproject",
+      "metadata": {
+        "description": "Prefix for resource naming"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "eastus",
+      "metadata": {
+        "description": "Azure region for resources"
+      }
+    },
+    "vnetCidr": {
+      "type": "string",
+      "defaultValue": "{{vnetCidr}}",
+      "metadata": {
+        "description": "CIDR block for the Virtual Network"
+      }
+    }{{subnetParameters}}
+  },
+  "variables": {
+    "resourceGroupName": "[concat(parameters('prefix'), '-rg')]",
+    "vnetName": "[concat(parameters('prefix'), '-vnet')]"{{subnetVariables}}
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('vnetName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Environment": "Production",
+        "ManagedBy": "ARM Template"
+      },
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('vnetCidr')]"
+          ]
+        },
+        "subnets": [{{subnetDefinitions}}
+        ]
+      }
+    }
+  ],
+  "outputs": {
+    "vnetName": {
+      "type": "string",
+      "value": "[variables('vnetName')]",
+      "metadata": {
+        "description": "Name of the Virtual Network"
+      }
+    },
+    "vnetId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+      "metadata": {
+        "description": "Resource ID of the Virtual Network"
+      }
+    }{{subnetOutputs}}
+  }
+}
