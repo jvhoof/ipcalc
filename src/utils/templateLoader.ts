@@ -14,6 +14,7 @@ interface Subnet {
   availabilityZone?: string
   region?: string
   availabilityDomain?: string
+  zone?: string
 }
 
 interface TemplateData {
@@ -577,6 +578,104 @@ export async function loadOracleTerraformTemplate(data: TemplateData): Promise<s
   content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetResources}}', subnetResources)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+/**
+ * Load and process AliCloud Aliyun CLI template
+ */
+export async function loadAliCloudAliyunTemplate(data: TemplateData): Promise<string> {
+  const template = await import('../templates/alicloud/aliyun.template.sh?raw')
+  let content = template.default
+
+  // Generate vSwitch creation commands
+  let vSwitchCreation = ''
+  data.subnets.forEach((subnet, index) => {
+    vSwitchCreation += 'echo "Creating vSwitch ' + (index + 1) + ' in ' + (subnet.zone || 'cn-hangzhou-a') + '..."\n'
+    vSwitchCreation += 'VSWITCH' + (index + 1) + '_ID=$(aliyun vpc CreateVSwitch \\\n'
+    vSwitchCreation += '  --RegionId "${REGION}" \\\n'
+    vSwitchCreation += '  --VpcId "${VPC_ID}" \\\n'
+    vSwitchCreation += '  --ZoneId "' + (subnet.zone || 'cn-hangzhou-a') + '" \\\n'
+    vSwitchCreation += '  --CidrBlock "' + subnet.cidr + '" \\\n'
+    vSwitchCreation += '  --VSwitchName "${VPC_NAME}-vswitch' + (index + 1) + '" \\\n'
+    vSwitchCreation += '  --Description "vSwitch ' + (index + 1) + ' for ' + (subnet.zone || 'cn-hangzhou-a') + '" \\\n'
+    vSwitchCreation += '  --output cols=VSwitchId rows=VSwitchId \\\n'
+    vSwitchCreation += '  | tail -n 1 | tr -d \' \')\n\n'
+    vSwitchCreation += 'echo "vSwitch ' + (index + 1) + ' created with ID: ${VSWITCH' + (index + 1) + '_ID}"\n'
+    vSwitchCreation += 'sleep 2\n\n'
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{vSwitchCreation}}', vSwitchCreation)
+
+  return content
+}
+
+/**
+ * Load and process AliCloud Terraform template
+ */
+export async function loadAliCloudTerraformTemplate(data: TemplateData): Promise<string> {
+  const template = await import('../templates/alicloud/terraform.template.tf?raw')
+  let content = template.default
+
+  // Generate vSwitch variables
+  let vSwitchVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    vSwitchVariables += '\nvariable "vswitch' + (index + 1) + '_cidr" {\n'
+    vSwitchVariables += '  description = "CIDR block for vSwitch ' + (index + 1) + '"\n'
+    vSwitchVariables += '  type        = string\n'
+    vSwitchVariables += '  default     = "' + subnet.cidr + '"\n'
+    vSwitchVariables += '}\n'
+
+    vSwitchVariables += '\nvariable "vswitch' + (index + 1) + '_zone" {\n'
+    vSwitchVariables += '  description = "Availability Zone for vSwitch ' + (index + 1) + '"\n'
+    vSwitchVariables += '  type        = string\n'
+    vSwitchVariables += '  default     = "' + (subnet.zone || 'cn-hangzhou-a') + '"\n'
+    vSwitchVariables += '}\n'
+  })
+
+  // Generate vSwitch resources
+  let vSwitchResources = ''
+  data.subnets.forEach((subnet, index) => {
+    vSwitchResources += 'resource "alicloud_vswitch" "vswitch' + (index + 1) + '" {\n'
+    vSwitchResources += '  vpc_id       = alicloud_vpc.vpc.id\n'
+    vSwitchResources += '  cidr_block   = var.vswitch' + (index + 1) + '_cidr\n'
+    vSwitchResources += '  zone_id      = var.vswitch' + (index + 1) + '_zone\n'
+    vSwitchResources += '  vswitch_name = "${var.vpc_name}-vswitch' + (index + 1) + '"\n'
+    vSwitchResources += '  description  = "vSwitch ' + (index + 1) + ' in ${var.vswitch' + (index + 1) + '_zone}"\n\n'
+    vSwitchResources += '  tags = {\n'
+    vSwitchResources += '    Environment = "Production"\n'
+    vSwitchResources += '    ManagedBy   = "Terraform"\n'
+    vSwitchResources += '  }\n'
+    vSwitchResources += '}\n\n'
+  })
+
+  // Generate vSwitch outputs
+  let vSwitchOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    vSwitchOutputs += '\noutput "vswitch' + (index + 1) + '_id" {\n'
+    vSwitchOutputs += '  description = "ID of vSwitch ' + (index + 1) + '"\n'
+    vSwitchOutputs += '  value       = alicloud_vswitch.vswitch' + (index + 1) + '.id\n'
+    vSwitchOutputs += '}\n'
+
+    vSwitchOutputs += '\noutput "vswitch' + (index + 1) + '_name" {\n'
+    vSwitchOutputs += '  description = "Name of vSwitch ' + (index + 1) + '"\n'
+    vSwitchOutputs += '  value       = alicloud_vswitch.vswitch' + (index + 1) + '.vswitch_name\n'
+    vSwitchOutputs += '}\n'
+
+    vSwitchOutputs += '\noutput "vswitch' + (index + 1) + '_zone" {\n'
+    vSwitchOutputs += '  description = "Zone of vSwitch ' + (index + 1) + '"\n'
+    vSwitchOutputs += '  value       = alicloud_vswitch.vswitch' + (index + 1) + '.zone_id\n'
+    vSwitchOutputs += '}\n'
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{vSwitchVariables}}', vSwitchVariables)
+  content = content.replace('{{vSwitchResources}}', vSwitchResources)
+  content = content.replace('{{vSwitchOutputs}}', vSwitchOutputs)
 
   return content
 }
