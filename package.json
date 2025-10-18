@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "description": "IP calculator application built with Vue.js and TypeScript",
   "main": "index.js",
+  "bin": {
+    "ipcalc": "./bin/ipcalc.js"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "cli": "tsx src/cli/index.ts"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
@@ -21,7 +25,9 @@
     "vuetify": "^3.10.4"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "@vitejs/plugin-vue": "^4.5.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.9.2",
     "vite": "^5.0.0",
     "vite-plugin-vuetify": "^2.1.2",
