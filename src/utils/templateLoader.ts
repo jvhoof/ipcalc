@@ -12,6 +12,7 @@ interface Subnet {
   reserved: string[]
   usableRange: string
   availabilityZone?: string
+  region?: string
 }
 
 interface TemplateData {
@@ -382,6 +383,103 @@ export async function loadAWSCloudFormationTemplate(data: TemplateData): Promise
   // Replace placeholders
   content = content.replace('{{vpcCidr}}', data.vnetCidr)
   content = content.replace('{{subnetParameters}}', subnetParameters)
+  content = content.replace('{{subnetResources}}', subnetResources)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+// ============================================
+// GCP Template Loaders
+// ============================================
+
+/**
+ * Load and process GCP gcloud CLI template
+ */
+export async function loadGCPGcloudTemplate(data: TemplateData): Promise<string> {
+  const template = await import('../templates/gcp/gcloud.template.sh?raw')
+  let content = template.default
+
+  // Generate subnet creation commands
+  let subnetCreation = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetCreation += `echo "Creating Subnet ${index + 1} in ${subnet.region || 'us-central1'}..."\n`
+    subnetCreation += `gcloud compute networks subnets create "\${VPC_NAME}-subnet${index + 1}" \\\n`
+    subnetCreation += `  --network="\${VPC_NAME}" \\\n`
+    subnetCreation += `  --region="${subnet.region || 'us-central1'}" \\\n`
+    subnetCreation += `  --range="${subnet.cidr}" \\\n`
+    subnetCreation += `  --enable-private-ip-google-access\n\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{subnetCreation}}', subnetCreation)
+
+  return content
+}
+
+/**
+ * Load and process GCP Terraform template
+ */
+export async function loadGCPTerraformTemplate(data: TemplateData): Promise<string> {
+  const template = await import('../templates/gcp/terraform.template.tf?raw')
+  let content = template.default
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `\nvariable "subnet${index + 1}_cidr" {\n`
+    subnetVariables += `  description = "CIDR block for Subnet ${index + 1}"\n`
+    subnetVariables += `  type        = string\n`
+    subnetVariables += `  default     = "${subnet.cidr}"\n`
+    subnetVariables += `}\n`
+
+    subnetVariables += `\nvariable "subnet${index + 1}_region" {\n`
+    subnetVariables += `  description = "Region for Subnet ${index + 1}"\n`
+    subnetVariables += `  type        = string\n`
+    subnetVariables += `  default     = "${subnet.region || 'us-central1'}"\n`
+    subnetVariables += `}\n`
+  })
+
+  // Generate subnet resources
+  let subnetResources = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetResources += `resource "google_compute_subnetwork" "subnet${index + 1}" {\n`
+    subnetResources += `  name          = "\${var.vpc_name}-subnet${index + 1}"\n`
+    subnetResources += `  ip_cidr_range = var.subnet${index + 1}_cidr\n`
+    subnetResources += `  region        = var.subnet${index + 1}_region\n`
+    subnetResources += `  network       = google_compute_network.vpc.id\n`
+    subnetResources += `  project       = var.project_id\n\n`
+    subnetResources += `  private_ip_google_access = true\n\n`
+    subnetResources += `  log_config {\n`
+    subnetResources += `    aggregation_interval = "INTERVAL_10_MIN"\n`
+    subnetResources += `    flow_sampling        = 0.5\n`
+    subnetResources += `    metadata             = "INCLUDE_ALL_METADATA"\n`
+    subnetResources += `  }\n`
+    subnetResources += `}\n\n`
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += `\noutput "subnet${index + 1}_name" {\n`
+    subnetOutputs += `  description = "Name of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = google_compute_subnetwork.subnet${index + 1}.name\n`
+    subnetOutputs += `}\n`
+
+    subnetOutputs += `\noutput "subnet${index + 1}_id" {\n`
+    subnetOutputs += `  description = "ID of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = google_compute_subnetwork.subnet${index + 1}.id\n`
+    subnetOutputs += `}\n`
+
+    subnetOutputs += `\noutput "subnet${index + 1}_self_link" {\n`
+    subnetOutputs += `  description = "Self link of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = google_compute_subnetwork.subnet${index + 1}.self_link\n`
+    subnetOutputs += `}\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetResources}}', subnetResources)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
 
