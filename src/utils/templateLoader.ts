@@ -13,6 +13,7 @@ interface Subnet {
   usableRange: string
   availabilityZone?: string
   region?: string
+  availabilityDomain?: string
 }
 
 interface TemplateData {
@@ -479,6 +480,100 @@ export async function loadGCPTerraformTemplate(data: TemplateData): Promise<stri
 
   // Replace placeholders
   content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetResources}}', subnetResources)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+// ============================================
+// Oracle Cloud Template Loaders
+// ============================================
+
+/**
+ * Load and process Oracle OCI CLI template
+ */
+export async function loadOracleOCITemplate(data: TemplateData): Promise<string> {
+  const template = await import('../templates/oracle/oci.template.sh?raw')
+  let content = template.default
+
+  // Generate subnet creation commands
+  let subnetCreation = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetCreation += 'echo "Creating Subnet ' + (index + 1) + '..."\n'
+    subnetCreation += 'SUBNET' + (index + 1) + '_ID=$(oci network subnet create \\\n'
+    subnetCreation += '  --compartment-id "${COMPARTMENT_ID}" \\\n'
+    subnetCreation += '  --vcn-id "${VCN_ID}" \\\n'
+    subnetCreation += '  --cidr-block "' + subnet.cidr + '" \\\n'
+    subnetCreation += '  --display-name "${VCN_NAME}-subnet' + (index + 1) + '" \\\n'
+    subnetCreation += '  --dns-label "subnet' + (index + 1) + '" \\\n'
+    subnetCreation += '  --route-table-id "${RT_ID}" \\\n'
+    subnetCreation += '  --security-list-ids \'["${SL_ID}"]\' \\\n'
+    subnetCreation += '  --query \'data.id\' \\\n'
+    subnetCreation += '  --raw-output)\n\n'
+    subnetCreation += 'echo "Subnet ' + (index + 1) + ' created with ID: ${SUBNET' + (index + 1) + '_ID}"\n\n'
+  })
+
+  // Replace placeholders
+  content = content.replace(/{{vcnCidr}}/g, data.vnetCidr)
+  content = content.replace('{{subnetCreation}}', subnetCreation)
+
+  return content
+}
+
+/**
+ * Load and process Oracle Terraform template
+ */
+export async function loadOracleTerraformTemplate(data: TemplateData): Promise<string> {
+  const template = await import('../templates/oracle/terraform.template.tf?raw')
+  let content = template.default
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += '\nvariable "subnet' + (index + 1) + '_cidr" {\n'
+    subnetVariables += '  description = "CIDR block for Subnet ' + (index + 1) + '"\n'
+    subnetVariables += '  type        = string\n'
+    subnetVariables += '  default     = "' + subnet.cidr + '"\n'
+    subnetVariables += '}\n'
+  })
+
+  // Generate subnet resources
+  let subnetResources = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetResources += 'resource "oci_core_subnet" "subnet' + (index + 1) + '" {\n'
+    subnetResources += '  compartment_id             = var.compartment_id\n'
+    subnetResources += '  vcn_id                     = oci_core_vcn.vcn.id\n'
+    subnetResources += '  cidr_block                 = var.subnet' + (index + 1) + '_cidr\n'
+    subnetResources += '  display_name               = "${var.vcn_name}-subnet' + (index + 1) + '"\n'
+    subnetResources += '  dns_label                  = "subnet' + (index + 1) + '"\n'
+    subnetResources += '  route_table_id             = oci_core_route_table.rt.id\n'
+    subnetResources += '  security_list_ids          = [oci_core_security_list.sl.id]\n'
+    subnetResources += '  prohibit_public_ip_on_vnic = false\n\n'
+    subnetResources += '  freeform_tags = {\n'
+    subnetResources += '    "Environment" = "Production"\n'
+    subnetResources += '    "ManagedBy"   = "Terraform"\n'
+    subnetResources += '  }\n'
+    subnetResources += '}\n\n'
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += '\noutput "subnet' + (index + 1) + '_id" {\n'
+    subnetOutputs += '  description = "OCID of Subnet ' + (index + 1) + '"\n'
+    subnetOutputs += '  value       = oci_core_subnet.subnet' + (index + 1) + '.id\n'
+    subnetOutputs += '}\n'
+
+    subnetOutputs += '\noutput "subnet' + (index + 1) + '_name" {\n'
+    subnetOutputs += '  description = "Name of Subnet ' + (index + 1) + '"\n'
+    subnetOutputs += '  value       = oci_core_subnet.subnet' + (index + 1) + '.display_name\n'
+    subnetOutputs += '}\n'
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vcnCidr}}', data.vnetCidr)
   content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetResources}}', subnetResources)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
