@@ -48,13 +48,6 @@ jobs:
             ./dist/ \
             ${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}:${{ vars.DEPLOY_PATH }}
       
-      # Alternative Step 6: Deploy using scp (if you prefer scp over rsync)
-      # - name: Deploy to server (using scp)
-      #   run: |
-      #     scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -r \
-      #       ./dist/* \
-      #       ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.DEPLOY_PATH }}
-      
       # Step 7: Clean up SSH key
       - name: Clean up
         if: always()
