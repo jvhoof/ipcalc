@@ -4,7 +4,7 @@
       <v-container>
         <v-row justify="center">
           <v-col cols="12" md="8" lg="6">
-            <h1 class="text-h2 text-center font-weight-bold mb-8" style="font-family: 'Roboto', sans-serif; color: white;">
+            <h1 class="responsive-title text-center font-weight-bold mb-8" style="font-family: 'Roboto', sans-serif; color: white;">
               IP CALCULATOR
             </h1>
 
@@ -19,36 +19,63 @@
       </v-container>
     </v-main>
 
-    <v-bottom-navigation v-model="activeTab" grow>
-      <v-btn value="on-premises">
+    <!-- Bottom Navigation - Responsive -->
+    <v-bottom-navigation v-model="activeTab" grow class="bottom-nav">
+      <!-- Always visible items -->
+      <v-btn value="on-premises" class="nav-btn">
         <v-icon>mdi-server</v-icon>
-        <span>On-Premises</span>
+        <span class="d-none d-sm-inline">On-Premises</span>
       </v-btn>
 
-      <v-btn value="azure">
+      <v-btn value="azure" class="nav-btn">
         <v-icon>mdi-microsoft</v-icon>
-        <span>Azure</span>
+        <span class="d-none d-sm-inline">Azure</span>
       </v-btn>
 
-      <v-btn value="aws">
+      <v-btn value="aws" class="nav-btn">
         <v-icon>mdi-aws</v-icon>
-        <span>AWS</span>
+        <span class="d-none d-sm-inline">AWS</span>
       </v-btn>
 
-      <v-btn value="gcp">
+      <v-btn value="gcp" class="nav-btn">
         <v-icon>mdi-google-cloud</v-icon>
-        <span>Google Cloud</span>
+        <span class="d-none d-sm-inline">Google Cloud</span>
       </v-btn>
 
-      <v-btn value="oracle">
+      <!-- Show Oracle and AliCloud directly on larger screens -->
+      <v-btn value="oracle" class="nav-btn d-none d-md-flex">
         <v-icon>mdi-cloud</v-icon>
         <span>Oracle</span>
       </v-btn>
 
-      <v-btn value="alicloud">
+      <v-btn value="alicloud" class="nav-btn d-none d-md-flex">
         <v-icon>mdi-cloud</v-icon>
         <span>Alibaba</span>
       </v-btn>
+
+      <!-- Overflow menu for small screens only -->
+      <v-menu location="top">
+        <template v-slot:activator="{ props }">
+          <v-btn v-bind="props" class="nav-btn d-md-none">
+            <v-icon>mdi-dots-horizontal</v-icon>
+            <span class="d-none d-sm-inline">More</span>
+          </v-btn>
+        </template>
+        <v-list>
+          <v-list-item @click="activeTab = 'oracle'" :class="{ 'v-list-item--active': activeTab === 'oracle' }">
+            <template v-slot:prepend>
+              <v-icon>mdi-cloud</v-icon>
+            </template>
+            <v-list-item-title>Oracle Cloud</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="activeTab = 'alicloud'" :class="{ 'v-list-item--active': activeTab === 'alicloud' }">
+            <template v-slot:prepend>
+              <v-icon>mdi-cloud</v-icon>
+            </template>
+            <v-list-item-title>Alibaba Cloud</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
     </v-bottom-navigation>
   </v-app>
 </template>
@@ -84,5 +111,48 @@ const currentBackgroundColor = computed(() => {
 <style scoped>
 .v-main {
   transition: background-color 0.5s ease;
+}
+
+/* Responsive title - scales properly on all screen sizes */
+.responsive-title {
+  font-size: clamp(1.75rem, 8vw, 3.75rem);
+  line-height: 1.2;
+  word-break: keep-all;
+  white-space: nowrap;
+  overflow: visible;
+  padding: 0 0.5rem;
+}
+
+/* Ensure bottom navigation is fully visible */
+.bottom-nav {
+  z-index: 1000;
+}
+
+/* Ensure nav buttons are properly sized */
+.nav-btn {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Better spacing on very small screens */
+@media (max-width: 360px) {
+  .responsive-title {
+    font-size: 1.5rem;
+    letter-spacing: -0.5px;
+  }
+}
+
+/* Tablet and up */
+@media (min-width: 600px) {
+  .responsive-title {
+    font-size: 3rem;
+  }
+}
+
+/* Desktop */
+@media (min-width: 960px) {
+  .responsive-title {
+    font-size: 3.75rem;
+  }
 }
 </style>
