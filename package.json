@@ -26,12 +26,12 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@vitejs/plugin-vue": "^4.5.0",
+    "@vitejs/plugin-vue": "^6.0.1",
     "tsx": "^4.7.0",
     "typescript": "^5.9.2",
-    "vite": "^7.1.10",
+    "vite": "^7.1.11",
     "vite-plugin-vuetify": "^2.1.2",
-    "vue-tsc": "^1.8.0"
+    "vue-tsc": "^3.1.1"
   },
   "type": "module"
 }
