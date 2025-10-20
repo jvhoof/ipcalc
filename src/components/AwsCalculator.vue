@@ -157,11 +157,12 @@
           :value="index"
         >
           <v-expansion-panel-title class="bg-surface-variant">
-            <div class="d-flex align-center" style="width: 100%;">
-              <v-icon class="mr-2">mdi-network</v-icon>
-              <span class="font-weight-bold">Subnet {{ index + 1 }}: {{ subnet.cidr }}</span>
-              <v-spacer></v-spacer>
-              <v-chip size="small" :style="themeStyles.subnetChip" class="mr-2">{{ subnet.usableIPs }} usable IPs</v-chip>
+            <div class="d-flex align-center justify-space-between" style="width: 100%;">
+              <div class="d-flex align-center">
+                <v-icon class="mr-2">mdi-network</v-icon>
+                <span class="font-weight-bold">Subnet {{ index + 1 }}: {{ subnet.cidr }}</span>
+              </div>
+              <v-chip size="x-small" class="d-flex justify-center align-center ga-2 mt-2" :style="themeStyles.subnetChip">{{ subnet.usableIPs }} usable IPs</v-chip>
             </div>
           </v-expansion-panel-title>
           <v-expansion-panel-text>
