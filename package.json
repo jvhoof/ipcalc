@@ -1,5 +1,5 @@
 {
-  "name": "ipcalc2",
+  "name": "ipcalc",
   "version": "1.0.0",
   "description": "IP calculator application built with Vue.js and TypeScript",
   "main": "index.js",
