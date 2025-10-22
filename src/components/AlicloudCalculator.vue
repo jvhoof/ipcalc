@@ -196,7 +196,7 @@
 
                   <v-list-item>
                     <v-list-item-title class="text-body-2">{{ vSwitch.reserved[1] }}</v-list-item-title>
-                    <v-list-item-subtitle class="text-caption">Gateway</v-list-item-subtitle>
+                    <v-list-item-subtitle class="text-caption">Reserved by Alibaba Cloud</v-list-item-subtitle>
                   </v-list-item>
 
                   <v-list-item>
@@ -205,8 +205,8 @@
                   </v-list-item>
 
                   <v-list-item>
-                    <v-list-item-title class="text-body-2">{{ vSwitch.reserved[3] }}, {{ vSwitch.reserved[4] }}, {{ vSwitch.reserved[5] }}</v-list-item-title>
-                    <v-list-item-subtitle class="text-caption">Last 3 addresses (reserved)</v-list-item-subtitle>
+                    <v-list-item-title class="text-body-2">{{ vSwitch.reserved[3] }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-caption">Broadcast address</v-list-item-subtitle>
                   </v-list-item>
                 </v-list>
               </v-col>
@@ -225,7 +225,7 @@
       <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
         <div class="text-body-2">
           <strong>Alibaba Cloud VPC Requirements:</strong><br>
-          • {{ alicloudConfig.reservedIpCount }} IPs are reserved (First 3 IPs and last 3 IPs)<br>
+          • {{ alicloudConfig.reservedIpCount }} IPs are reserved per vSwitch (network address, broadcast, and last 2 IPs)<br>
           • Minimum vSwitch size: /{{ alicloudConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - alicloudConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - alicloudConfig.minCidrPrefix) - alicloudConfig.reservedIpCount }} usable)<br>
           • VPC CIDR range: /{{ alicloudConfig.maxCidrPrefix }} to /{{ alicloudConfig.minCidrPrefix }}<br>
           • vSwitches are zone-specific resources
@@ -412,18 +412,16 @@ const calculateVPC = (): void => {
       const vSwitchNetwork = numberToIP(vSwitchNetworkNum)
       const vSwitchMask = cidrToMask(vSwitchPrefix)
 
-      // Alibaba Cloud reserves: first 3 IPs and last 3 IPs
+      // Alibaba Cloud reserves: network address and last 3 IPs
       const reserved: string[] = [
         numberToIP(vSwitchNetworkNum).join('.'),           // x.x.x.0 - Network address
-        numberToIP(vSwitchNetworkNum + 1).join('.'),       // x.x.x.1 - Gateway
-        numberToIP(vSwitchNetworkNum + 2).join('.'),       // x.x.x.2 - Reserved by Alibaba Cloud
-        numberToIP(vSwitchNetworkNum + vSwitchSize - 3).join('.'), // x.x.x.253
-        numberToIP(vSwitchNetworkNum + vSwitchSize - 2).join('.'), // x.x.x.254
-        numberToIP(vSwitchNetworkNum + vSwitchSize - 1).join('.')  // x.x.x.255 - Last address
+        numberToIP(vSwitchNetworkNum + vSwitchSize - 3).join('.'), // Third from last
+        numberToIP(vSwitchNetworkNum + vSwitchSize - 2).join('.'), // Second from last
+        numberToIP(vSwitchNetworkNum + vSwitchSize - 1).join('.')  // x.x.x.255 - Broadcast
       ]
 
       const usableIPs = vSwitchSize - alicloudConfig.reservedIpCount
-      const firstUsable = numberToIP(vSwitchNetworkNum + 3).join('.')
+      const firstUsable = numberToIP(vSwitchNetworkNum + 1).join('.')
       const lastUsable = numberToIP(vSwitchNetworkNum + vSwitchSize - 4).join('.')
 
       vSwitches.value.push({

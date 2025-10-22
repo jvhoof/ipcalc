@@ -79,7 +79,7 @@ export const cloudProviderConfig: AllCloudProviderConfig = {
   alicloud: {
     defaultCidr: '172.16.1.0/24',
     defaultSubnetCount: 3,
-    reservedIpCount: 6, // First 3 IPs + last 3 IPs
+    reservedIpCount: 4, // Network address + last 3 IPs (including broadcast)
     minCidrPrefix: 29,
     maxCidrPrefix: 8,
     availabilityZones: [
