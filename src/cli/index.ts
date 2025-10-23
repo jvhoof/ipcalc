@@ -29,6 +29,7 @@ interface CliArgs {
   provider: string
   cidr: string
   subnets: number
+  prefix?: number
   output?: 'info' | 'cli' | 'terraform' | 'bicep' | 'arm' | 'powershell' | 'cloudformation' | 'gcloud' | 'oci' | 'aliyun'
   file?: string
   help?: boolean
@@ -58,6 +59,9 @@ Required Arguments:
   --subnets <count>     Number of subnets to create (1-256)
 
 Optional Arguments:
+  --prefix <number>     Desired subnet CIDR prefix (e.g., 26 for /26)
+                        When specified, subnets will use this prefix instead
+                        of automatic calculation based on subnet count
   --output <type>       Output type (default: info)
                         Azure: info, cli, terraform, bicep, arm, powershell
                         AWS: info, cli, terraform, cloudformation
@@ -71,6 +75,9 @@ Optional Arguments:
 Examples:
   # Show network information
   ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 4
+
+  # Use custom subnet prefix to avoid filling entire network
+  ipcalc --provider azure --cidr 172.16.1.0/24 --subnets 4 --prefix 26
 
   # Generate Terraform for AWS
   ipcalc --provider aws --cidr 10.0.0.0/16 --subnets 3 --output terraform
@@ -112,6 +119,10 @@ function parseArgs(): CliArgs | null {
       case '--subnets':
       case '-s':
         args.subnets = parseInt(nextArg || '0', 10)
+        i++
+        break
+      case '--prefix':
+        args.prefix = parseInt(nextArg || '0', 10)
         i++
         break
       case '--output':
@@ -293,7 +304,7 @@ function main(): void {
   const config = getCloudProviderConfig(args.provider as any)
 
   // Calculate subnets
-  const { subnets, error } = calculateSubnets(args.cidr, args.subnets, config)
+  const { subnets, error } = calculateSubnets(args.cidr, args.subnets, config, args.prefix)
 
   if (error) {
     console.error(`Error: ${error}`)

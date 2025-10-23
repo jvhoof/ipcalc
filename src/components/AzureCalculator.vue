@@ -45,6 +45,56 @@
         </v-col>
       </v-row>
 
+      <!-- Desirable Subnet CIDR Configuration -->
+      <v-expansion-panels class="mt-2 mb-4">
+        <v-expansion-panel>
+          <v-expansion-panel-title class="text-body-2">
+            <v-icon class="mr-2" size="small">mdi-cog-outline</v-icon>
+            <span>Advanced</span>
+          </v-expansion-panel-title>
+          <v-expansion-panel-text>
+            <div class="text-subtitle-2 font-weight-bold mb-3">Desired Subnet Prefix</div>
+            <v-row>
+              <v-col cols="12">
+                <v-text-field
+                  v-model.number="desiredSubnetPrefix"
+                  label="Subnet CIDR Prefix"
+                  type="number"
+                  :min="azureConfig.maxCidrPrefix"
+                  :max="azureConfig.minCidrPrefix"
+                  variant="outlined"
+                  @input="calculateVNet"
+                  density="comfortable"
+                  hint="Specify a subnet CIDR prefix (e.g., 26 for /26). Uses automatic calculation if not set."
+                  persistent-hint
+                >
+                  <template v-slot:prepend-inner>
+                    <span class="text-body-1 font-weight-bold">/</span>
+                  </template>
+                  <template v-slot:append>
+                    <v-btn
+                      icon="mdi-refresh"
+                      size="small"
+                      variant="text"
+                      @click="resetToDefaultSubnetPrefix"
+                      :disabled="!vnetCidr"
+                    >
+                      <v-icon>mdi-refresh</v-icon>
+                      <v-tooltip activator="parent" location="bottom">Reset to default</v-tooltip>
+                    </v-btn>
+                  </template>
+                </v-text-field>
+              </v-col>
+            </v-row>
+            <v-alert density="compact" type="info" variant="tonal" class="mt-2">
+              <div class="text-caption">
+                When set, subnets will be created with this CIDR prefix instead of automatically dividing the VNet. This allows you to avoid filling the entire VNet address space.
+              </div>
+            </v-alert>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
+
       <!-- VNet Summary -->
       <v-card v-if="vnetInfo" class="mt-4" variant="outlined">
         <v-card-title class="text-h6" :style="themeStyles.vpcInfoHeader">VNet Information</v-card-title>
@@ -294,6 +344,7 @@ interface Subnet {
 
 const vnetCidr = ref<string>(azureConfig.defaultCidr)
 const numberOfSubnets = ref<number>(azureConfig.defaultSubnetCount)
+const desiredSubnetPrefix = ref<number | null>(null)
 const vnetInfo = ref<VNetInfo | null>(null)
 const subnets = ref<Subnet[]>([])
 const errorMessage = ref<string>('')
@@ -413,19 +464,50 @@ const calculateVNet = (): void => {
       return
     }
 
-    // Calculate required prefix length for subnets
-    const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets.value))
-    const subnetPrefix = prefix + bitsNeeded
+    // Use desired subnet prefix if specified, otherwise calculate automatically
+    let subnetPrefix: number
+    if (desiredSubnetPrefix.value !== null && desiredSubnetPrefix.value > 0) {
+      subnetPrefix = desiredSubnetPrefix.value
 
-    // Check against Azure minimum
-    if (subnetPrefix > azureConfig.minCidrPrefix) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /${azureConfig.minCidrPrefix} (Azure minimum).`
-      return
-    }
+      // Validate the desired prefix
+      if (subnetPrefix < prefix) {
+        errorMessage.value = `Desired subnet prefix /${subnetPrefix} is larger than VNet prefix /${prefix}. Subnet must be smaller than or equal to VNet.`
+        return
+      }
 
-    if (subnetPrefix > 32) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Not enough address space.`
-      return
+      if (subnetPrefix > azureConfig.minCidrPrefix) {
+        errorMessage.value = `Desired subnet prefix /${subnetPrefix} is smaller than Azure minimum /${azureConfig.minCidrPrefix}.`
+        return
+      }
+
+      if (subnetPrefix < azureConfig.maxCidrPrefix) {
+        errorMessage.value = `Desired subnet prefix /${subnetPrefix} is larger than Azure maximum /${azureConfig.maxCidrPrefix}.`
+        return
+      }
+
+      // Check if the desired prefix can accommodate the requested number of subnets
+      const subnetSize = Math.pow(2, 32 - subnetPrefix)
+      const maxPossibleSubnets = Math.floor(totalIPs / subnetSize)
+
+      if (maxPossibleSubnets < numberOfSubnets.value) {
+        errorMessage.value = `Cannot create ${numberOfSubnets.value} subnets with prefix /${subnetPrefix} in a /${prefix} VNet. Maximum possible: ${maxPossibleSubnets} subnet(s). Use a larger prefix (smaller subnets) or reduce the number of subnets.`
+        return
+      }
+    } else {
+      // Calculate required prefix length for subnets automatically
+      const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets.value))
+      subnetPrefix = prefix + bitsNeeded
+
+      // Check against Azure minimum
+      if (subnetPrefix > azureConfig.minCidrPrefix) {
+        errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Each subnet would be smaller than /${azureConfig.minCidrPrefix} (Azure minimum).`
+        return
+      }
+
+      if (subnetPrefix > 32) {
+        errorMessage.value = `Cannot divide /${prefix} into ${numberOfSubnets.value} subnets. Not enough address space.`
+        return
+      }
     }
 
     // Calculate subnets
@@ -541,6 +623,31 @@ const copyToClipboard = async (): Promise<void> => {
   }
 }
 
+const getDefaultSubnetPrefix = (): number | null => {
+  const parsed = parseCIDR(vnetCidr.value)
+  if (!parsed) return null
+
+  const { prefix } = parsed
+  // Calculate required prefix length for subnets automatically
+  const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets.value))
+  const subnetPrefix = prefix + bitsNeeded
+
+  // Make sure it's within Azure limits
+  if (subnetPrefix > azureConfig.minCidrPrefix || subnetPrefix < azureConfig.maxCidrPrefix) {
+    return null
+  }
+
+  return subnetPrefix
+}
+
+const resetToDefaultSubnetPrefix = (): void => {
+  const defaultPrefix = getDefaultSubnetPrefix()
+  if (defaultPrefix !== null) {
+    desiredSubnetPrefix.value = defaultPrefix
+    calculateVNet()
+  }
+}
+
 const handleKeydown = (event: KeyboardEvent): void => {
   if (event.key === 'ArrowLeft') {
     event.preventDefault()
@@ -552,6 +659,11 @@ const handleKeydown = (event: KeyboardEvent): void => {
 }
 
 onMounted(() => {
+  // Set default subnet prefix based on initial VNet CIDR
+  const defaultPrefix = getDefaultSubnetPrefix()
+  if (defaultPrefix !== null) {
+    desiredSubnetPrefix.value = defaultPrefix
+  }
   calculateVNet()
   window.addEventListener('keydown', handleKeydown)
 })

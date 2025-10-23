@@ -123,7 +123,8 @@ export function calculateNetwork(cidr: string, config: CloudProviderConfig): Net
 export function calculateSubnets(
   cidr: string,
   numberOfSubnets: number,
-  config: CloudProviderConfig
+  config: CloudProviderConfig,
+  desiredSubnetPrefix?: number | null
 ): { subnets: SubnetInfo[], error?: string } {
   const parsed = parseCIDR(cidr, config.maxCidrPrefix, config.minCidrPrefix)
   if (!parsed) {
@@ -136,22 +137,64 @@ export function calculateSubnets(
     return { subnets: [], error: 'Number of subnets must be between 1 and 256' }
   }
 
-  // Calculate required prefix length for subnets
-  const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets))
-  const subnetPrefix = prefix + bitsNeeded
+  // Use desired subnet prefix if specified, otherwise calculate automatically
+  let subnetPrefix: number
+  if (desiredSubnetPrefix !== undefined && desiredSubnetPrefix !== null && desiredSubnetPrefix > 0) {
+    subnetPrefix = desiredSubnetPrefix
 
-  // Check against cloud provider minimum
-  if (subnetPrefix > config.minCidrPrefix) {
-    return {
-      subnets: [],
-      error: `Cannot divide /${prefix} into ${numberOfSubnets} subnets. Each subnet would be smaller than /${config.minCidrPrefix} (cloud provider minimum).`
+    // Validate the desired prefix
+    if (subnetPrefix < prefix) {
+      return {
+        subnets: [],
+        error: `Desired subnet prefix /${subnetPrefix} is larger than network prefix /${prefix}. Subnet must be smaller than or equal to network.`
+      }
     }
-  }
 
-  if (subnetPrefix > 32) {
-    return {
-      subnets: [],
-      error: `Cannot divide /${prefix} into ${numberOfSubnets} subnets. Not enough address space.`
+    if (subnetPrefix > config.minCidrPrefix) {
+      return {
+        subnets: [],
+        error: `Desired subnet prefix /${subnetPrefix} is smaller than cloud provider minimum /${config.minCidrPrefix}.`
+      }
+    }
+
+    if (subnetPrefix < config.maxCidrPrefix) {
+      return {
+        subnets: [],
+        error: `Desired subnet prefix /${subnetPrefix} is larger than cloud provider maximum /${config.maxCidrPrefix}.`
+      }
+    }
+
+    // Calculate network base and total IPs to check capacity
+    const networkNum = ipToNumber(ip) & (0xFFFFFFFF << (32 - prefix))
+    const totalIPs = Math.pow(2, 32 - prefix)
+    const subnetSize = Math.pow(2, 32 - subnetPrefix)
+    const maxPossibleSubnets = Math.floor(totalIPs / subnetSize)
+
+    // Check if the desired prefix can accommodate the requested number of subnets
+    if (maxPossibleSubnets < numberOfSubnets) {
+      return {
+        subnets: [],
+        error: `Cannot create ${numberOfSubnets} subnets with prefix /${subnetPrefix} in a /${prefix} network. Maximum possible: ${maxPossibleSubnets} subnet(s). Use a larger prefix (smaller subnets) or reduce the number of subnets.`
+      }
+    }
+  } else {
+    // Calculate required prefix length for subnets automatically
+    const bitsNeeded = Math.ceil(Math.log2(numberOfSubnets))
+    subnetPrefix = prefix + bitsNeeded
+
+    // Check against cloud provider minimum
+    if (subnetPrefix > config.minCidrPrefix) {
+      return {
+        subnets: [],
+        error: `Cannot divide /${prefix} into ${numberOfSubnets} subnets. Each subnet would be smaller than /${config.minCidrPrefix} (cloud provider minimum).`
+      }
+    }
+
+    if (subnetPrefix > 32) {
+      return {
+        subnets: [],
+        error: `Cannot divide /${prefix} into ${numberOfSubnets} subnets. Not enough address space.`
+      }
     }
   }
 
