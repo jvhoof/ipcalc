@@ -45,6 +45,56 @@
         </v-col>
       </v-row>
 
+      <!-- Advanced Configuration -->
+      <v-expansion-panels class="mt-2 mb-4">
+        <v-expansion-panel>
+          <v-expansion-panel-title class="text-body-2">
+            <v-icon class="mr-2" size="small">mdi-cog-outline</v-icon>
+            <span>Advanced</span>
+          </v-expansion-panel-title>
+          <v-expansion-panel-text>
+            <div class="text-subtitle-2 font-weight-bold mb-3">Desired Subnet Prefix</div>
+            <v-row>
+              <v-col cols="12">
+                <v-text-field
+                  v-model.number="desiredSubnetPrefix"
+                  label="vSwitch CIDR Prefix"
+                  type="number"
+                  :min="alicloudConfig.maxCidrPrefix"
+                  :max="alicloudConfig.minCidrPrefix"
+                  variant="outlined"
+                  @input="calculateVPC"
+                  density="comfortable"
+                  hint="Specify a vSwitch CIDR prefix (e.g., 26 for /26). Uses automatic calculation if not set."
+                  persistent-hint
+                >
+                  <template v-slot:prepend-inner>
+                    <span class="text-body-1 font-weight-bold">/</span>
+                  </template>
+                  <template v-slot:append>
+                    <v-btn
+                      icon="mdi-refresh"
+                      size="small"
+                      variant="text"
+                      @click="resetToDefaultVSwitchPrefix"
+                      :disabled="!vpcCidr"
+                    >
+                      <v-icon>mdi-refresh</v-icon>
+                      <v-tooltip activator="parent" location="bottom">Reset to default</v-tooltip>
+                    </v-btn>
+                  </template>
+                </v-text-field>
+              </v-col>
+            </v-row>
+            <v-alert density="compact" type="info" variant="tonal" class="mt-2">
+              <div class="text-caption">
+                When set, vSwitches will be created with this CIDR prefix instead of automatically dividing the VPC. This allows you to avoid filling the entire VPC address space.
+              </div>
+            </v-alert>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
+
       <!-- VPC Summary -->
       <v-card v-if="vpcInfo" class="mt-4" variant="outlined">
         <v-card-title class="text-h6" :style="themeStyles.vpcInfoHeader">VPC Information</v-card-title>
@@ -267,6 +317,7 @@ interface VSwitch {
 
 const vpcCidr = ref<string>(alicloudConfig.defaultCidr)
 const numberOfVSwitches = ref<number>(alicloudConfig.defaultSubnetCount)
+const desiredSubnetPrefix = ref<number | null>(null)
 const vpcInfo = ref<VPCInfo | null>(null)
 const vSwitches = ref<VSwitch[]>([])
 const errorMessage = ref<string>('')
@@ -388,19 +439,50 @@ const calculateVPC = (): void => {
       return
     }
 
-    // Calculate required prefix length for vSwitches
-    const bitsNeeded = Math.ceil(Math.log2(numberOfVSwitches.value))
-    const vSwitchPrefix = prefix + bitsNeeded
+    // Use desired vSwitch prefix if specified, otherwise calculate automatically
+    let vSwitchPrefix: number
+    if (desiredSubnetPrefix.value !== null && desiredSubnetPrefix.value > 0) {
+      vSwitchPrefix = desiredSubnetPrefix.value
 
-    // Check against Alibaba Cloud minimum
-    if (vSwitchPrefix > alicloudConfig.minCidrPrefix) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfVSwitches.value} vSwitches. Each vSwitch would be smaller than /${alicloudConfig.minCidrPrefix} (Alibaba Cloud minimum).`
-      return
-    }
+      // Validate the desired prefix
+      if (vSwitchPrefix < prefix) {
+        errorMessage.value = `Desired vSwitch prefix /${vSwitchPrefix} is larger than VPC prefix /${prefix}. vSwitch must be smaller than or equal to VPC.`
+        return
+      }
 
-    if (vSwitchPrefix > 32) {
-      errorMessage.value = `Cannot divide /${prefix} into ${numberOfVSwitches.value} vSwitches. Not enough address space.`
-      return
+      if (vSwitchPrefix > alicloudConfig.minCidrPrefix) {
+        errorMessage.value = `Desired vSwitch prefix /${vSwitchPrefix} is smaller than Alibaba Cloud minimum /${alicloudConfig.minCidrPrefix}.`
+        return
+      }
+
+      if (vSwitchPrefix < alicloudConfig.maxCidrPrefix) {
+        errorMessage.value = `Desired vSwitch prefix /${vSwitchPrefix} is larger than Alibaba Cloud maximum /${alicloudConfig.maxCidrPrefix}.`
+        return
+      }
+
+      // Check if the desired prefix can accommodate the requested number of vSwitches
+      const vSwitchSize = Math.pow(2, 32 - vSwitchPrefix)
+      const maxPossibleVSwitches = Math.floor(totalIPs / vSwitchSize)
+
+      if (maxPossibleVSwitches < numberOfVSwitches.value) {
+        errorMessage.value = `Cannot create ${numberOfVSwitches.value} vSwitches with prefix /${vSwitchPrefix} in a /${prefix} VPC. Maximum possible: ${maxPossibleVSwitches} vSwitch(es). Use a larger prefix (smaller vSwitches) or reduce the number of vSwitches.`
+        return
+      }
+    } else {
+      // Calculate required prefix length for vSwitches automatically
+      const bitsNeeded = Math.ceil(Math.log2(numberOfVSwitches.value))
+      vSwitchPrefix = prefix + bitsNeeded
+
+      // Check against Alibaba Cloud minimum
+      if (vSwitchPrefix > alicloudConfig.minCidrPrefix) {
+        errorMessage.value = `Cannot divide /${prefix} into ${numberOfVSwitches.value} vSwitches. Each vSwitch would be smaller than /${alicloudConfig.minCidrPrefix} (Alibaba Cloud minimum).`
+        return
+      }
+
+      if (vSwitchPrefix > 32) {
+        errorMessage.value = `Cannot divide /${prefix} into ${numberOfVSwitches.value} vSwitches. Not enough address space.`
+        return
+      }
     }
 
     // Calculate vSwitches
@@ -476,6 +558,31 @@ const copyToClipboard = async (): Promise<void> => {
   }
 }
 
+const getDefaultVSwitchPrefix = (): number | null => {
+  const parsed = parseCIDR(vpcCidr.value)
+  if (!parsed) return null
+
+  const { prefix } = parsed
+  // Calculate required prefix length for vSwitches automatically
+  const bitsNeeded = Math.ceil(Math.log2(numberOfVSwitches.value))
+  const vSwitchPrefix = prefix + bitsNeeded
+
+  // Make sure it's within Alibaba Cloud limits
+  if (vSwitchPrefix > alicloudConfig.minCidrPrefix || vSwitchPrefix < alicloudConfig.maxCidrPrefix) {
+    return null
+  }
+
+  return vSwitchPrefix
+}
+
+const resetToDefaultVSwitchPrefix = (): void => {
+  const defaultPrefix = getDefaultVSwitchPrefix()
+  if (defaultPrefix !== null) {
+    desiredSubnetPrefix.value = defaultPrefix
+    calculateVPC()
+  }
+}
+
 const handleKeydown = (event: KeyboardEvent): void => {
   if (event.key === 'ArrowLeft') {
     event.preventDefault()
@@ -487,6 +594,11 @@ const handleKeydown = (event: KeyboardEvent): void => {
 }
 
 onMounted(() => {
+  // Set default vSwitch prefix based on initial VPC CIDR
+  const defaultPrefix = getDefaultVSwitchPrefix()
+  if (defaultPrefix !== null) {
+    desiredSubnetPrefix.value = defaultPrefix
+  }
   calculateVPC()
   window.addEventListener('keydown', handleKeydown)
 })
