@@ -1,0 +1,55 @@
+name: Deploy Vue Application
+
+on:
+  push:
+    branches:
+      - beta  # Trigger on push to main branch
+  pull_request:
+    branches:
+      - beta
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # Step 2: Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'  # Specify your Node.js version
+          cache: 'npm'
+      
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm ci  # Use 'npm ci' for faster, more reliable CI builds
+      
+      # Step 4: Build the Vue application
+      - name: Build application
+        run: npm run build
+      
+      # Step 5: Setup SSH key
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+      
+      # Step 6: Deploy to server via rsync (more efficient than scp)
+      - name: Deploy to server
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            ./dist/ \
+            ${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}:${{ vars.BETA_DEPLOY_PATH }}
+      
+      # Step 7: Clean up SSH key
+      - name: Clean up
+        if: always()
+        run: |
+          rm -rf ~/.ssh/id_ed25519

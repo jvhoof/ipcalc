@@ -4,7 +4,7 @@
       <v-container>
         <v-row justify="center">
           <v-col cols="12" md="8" lg="6">
-            <h1 class="responsive-title text-center font-weight-bold mb-8" style="font-family: 'Roboto', sans-serif; color: white;">
+            <h1 class="responsive-title text-center font-weight-bold mb-8" :style="{ fontFamily: 'Roboto, sans-serif', color: currentTitleColor, transition: 'color 0.5s ease' }">
               IP CALCULATOR
             </h1>
 
@@ -20,44 +20,49 @@
     </v-main>
 
     <!-- Bottom Navigation - Responsive -->
-    <v-bottom-navigation v-model="activeTab" grow class="bottom-nav">
+    <v-bottom-navigation
+      v-model="activeTab"
+      grow
+      class="bottom-nav"
+      :style="{ backgroundColor: navBarBackgroundColor, transition: 'background-color 0.3s ease' }"
+    >
       <!-- Always visible items -->
-      <v-btn value="on-premises" class="nav-btn">
-        <v-icon>mdi-server</v-icon>
+      <v-btn value="on-premises" class="nav-btn" :style="{ color: navBarTextColor }">
+        <v-icon :style="{ color: navBarTextColor }">mdi-server</v-icon>
         <span class="d-none d-sm-inline">On-Premises</span>
       </v-btn>
 
-      <v-btn value="azure" class="nav-btn">
-        <v-icon>mdi-microsoft</v-icon>
+      <v-btn value="azure" class="nav-btn" :style="{ color: navBarTextColor }">
+        <v-icon :style="{ color: navBarTextColor }">mdi-microsoft</v-icon>
         <span class="d-none d-sm-inline">Azure</span>
       </v-btn>
 
-      <v-btn value="aws" class="nav-btn">
-        <v-icon>mdi-aws</v-icon>
+      <v-btn value="aws" class="nav-btn" :style="{ color: navBarTextColor }">
+        <v-icon :style="{ color: navBarTextColor }">mdi-aws</v-icon>
         <span class="d-none d-sm-inline">AWS</span>
       </v-btn>
 
-      <v-btn value="gcp" class="nav-btn">
-        <v-icon>mdi-google-cloud</v-icon>
+      <v-btn value="gcp" class="nav-btn" :style="{ color: navBarTextColor }">
+        <v-icon :style="{ color: navBarTextColor }">mdi-google-cloud</v-icon>
         <span class="d-none d-sm-inline">Google Cloud</span>
       </v-btn>
 
       <!-- Show Oracle and AliCloud directly on larger screens -->
-      <v-btn value="oracle" class="nav-btn d-none d-md-flex">
-        <v-icon>mdi-cloud</v-icon>
+      <v-btn value="oracle" class="nav-btn d-none d-md-flex" :style="{ color: navBarTextColor }">
+        <v-icon :style="{ color: navBarTextColor }">mdi-cloud</v-icon>
         <span>Oracle</span>
       </v-btn>
 
-      <v-btn value="alicloud" class="nav-btn d-none d-md-flex">
-        <v-icon>mdi-cloud</v-icon>
+      <v-btn value="alicloud" class="nav-btn d-none d-md-flex" :style="{ color: navBarTextColor }">
+        <v-icon :style="{ color: navBarTextColor }">mdi-cloud</v-icon>
         <span>Alibaba</span>
       </v-btn>
 
       <!-- Overflow menu for small screens only -->
       <v-menu location="top">
         <template v-slot:activator="{ props }">
-          <v-btn v-bind="props" class="nav-btn d-md-none">
-            <v-icon>mdi-dots-horizontal</v-icon>
+          <v-btn v-bind="props" class="nav-btn d-md-none" :style="{ color: navBarTextColor }">
+            <v-icon :style="{ color: navBarTextColor }">mdi-dots-horizontal</v-icon>
             <span class="d-none d-sm-inline">More</span>
           </v-btn>
         </template>
@@ -76,35 +81,103 @@
           </v-list-item>
         </v-list>
       </v-menu>
+
+      <!-- Dark mode toggle menu (always visible) -->
+      <v-menu location="top">
+        <template v-slot:activator="{ props }">
+          <v-btn v-bind="props" class="nav-btn" :style="{ color: navBarTextColor }">
+            <v-icon :style="{ color: navBarTextColor }">mdi-dots-vertical</v-icon>
+            <span class="d-none d-sm-inline">Settings</span>
+          </v-btn>
+        </template>
+        <v-list>
+          <v-list-item @click="toggleDarkMode">
+            <template v-slot:prepend>
+              <v-icon>{{ isDarkMode ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
+            </template>
+            <v-list-item-title>{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
     </v-bottom-navigation>
   </v-app>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
 import OnPremisesCalculator from './components/OnPremisesCalculator.vue'
 import AzureCalculator from './components/AzureCalculator.vue'
 import AwsCalculator from './components/AwsCalculator.vue'
 import GcpCalculator from './components/GcpCalculator.vue'
 import OracleCalculator from './components/OracleCalculator.vue'
 import AlicloudCalculator from './components/AlicloudCalculator.vue'
+import {
+  getBackgroundColor,
+  getTitleColor,
+  getNavBarBackgroundColor,
+  getNavBarTextColor
+} from './config/cloudThemes'
 
 // Default active tab - change this to set the default cloud provider
 const activeTab = ref<string>('on-premises')
 
-// Background color mapping for each cloud provider
-const backgroundColors: Record<string, string> = {
-  'on-premises': '#005955',
-  'azure': '#0078D4',
-  'aws': '#FF9900',
-  'gcp': '#4285F4',
-  'oracle': '#C74634',
-  'alicloud': '#FF6A00'
+// Dark mode state - will be set based on system preference
+const isDarkMode = ref<boolean>(false)
+
+// Detect system theme preference
+const detectSystemTheme = () => {
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    isDarkMode.value = true
+  } else {
+    isDarkMode.value = false
+  }
+}
+
+// Handle system theme changes
+const handleThemeChange = (e: MediaQueryListEvent) => {
+  isDarkMode.value = e.matches
+}
+
+// Initialize theme detection on mount
+onMounted(() => {
+  detectSystemTheme()
+
+  // Listen for system theme changes
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  mediaQuery.addEventListener('change', handleThemeChange)
+})
+
+// Clean up event listener on unmount
+onUnmounted(() => {
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  mediaQuery.removeEventListener('change', handleThemeChange)
+})
+
+// Provide dark mode state to all child components
+provide('isDarkMode', isDarkMode)
+
+// Toggle dark mode function
+const toggleDarkMode = () => {
+  isDarkMode.value = !isDarkMode.value
 }
 
 // Computed property for current background color
 const currentBackgroundColor = computed(() => {
-  return backgroundColors[activeTab.value] || '#005955'
+  return getBackgroundColor(activeTab.value, isDarkMode.value)
+})
+
+// Computed property for title color
+const currentTitleColor = computed(() => {
+  return getTitleColor(activeTab.value, isDarkMode.value)
+})
+
+// Computed properties for bottom navigation bar colors
+const navBarBackgroundColor = computed(() => {
+  return getNavBarBackgroundColor(isDarkMode.value)
+})
+
+const navBarTextColor = computed(() => {
+  return getNavBarTextColor(isDarkMode.value)
 })
 </script>
 
@@ -132,6 +205,17 @@ const currentBackgroundColor = computed(() => {
 .nav-btn {
   min-width: 0;
   flex: 1 1 auto;
+  transition: color 0.3s ease;
+}
+
+/* Style nav button icons with smooth transitions */
+.nav-btn :deep(.v-icon) {
+  transition: color 0.3s ease;
+}
+
+/* Style nav button text with smooth transitions */
+.nav-btn :deep(span) {
+  transition: color 0.3s ease;
 }
 
 /* Better spacing on very small screens */
