@@ -1,5 +1,5 @@
 <template>
-  <v-card>
+  <v-card :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
     <v-card-text>
       <!-- VPC Configuration -->
       <v-row>
@@ -46,13 +46,13 @@
       </v-row>
 
       <!-- Advanced Configuration -->
-      <v-expansion-panels class="mt-2 mb-4">
-        <v-expansion-panel>
-          <v-expansion-panel-title class="text-body-2">
+      <v-expansion-panels class="mt-2 mb-4" :style="{ backgroundColor: mainPanelBgColor }">
+        <v-expansion-panel :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+          <v-expansion-panel-title class="text-body-2" :style="{ color: mainPanelTextColor }">
             <v-icon class="mr-2" size="small">mdi-cog-outline</v-icon>
             <span>Advanced</span>
           </v-expansion-panel-title>
-          <v-expansion-panel-text>
+          <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
             <div class="text-subtitle-2 font-weight-bold mb-3">Desired Subnet Prefix</div>
             <v-row>
               <v-col cols="12">
@@ -86,7 +86,7 @@
                 </v-text-field>
               </v-col>
             </v-row>
-            <v-alert density="compact" type="info" variant="tonal" class="mt-2">
+            <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
               <div class="text-caption">
                 When set, vSwitches will be created with this CIDR prefix instead of automatically dividing the VPC. This allows you to avoid filling the entire VPC address space.
               </div>
@@ -96,10 +96,10 @@
       </v-expansion-panels>
 
       <!-- VPC Summary -->
-      <v-card v-if="vpcInfo" class="mt-4" variant="outlined">
+      <v-card v-if="vpcInfo" class="mt-4" variant="outlined" :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
         <v-card-title class="text-h6" :style="themeStyles.vpcInfoHeader">VPC Information</v-card-title>
-        <v-card-text>
-          <v-list density="compact">
+        <v-card-text :style="{ color: nestedPanelTextColor }">
+          <v-list density="compact" :style="{ backgroundColor: 'transparent', color: nestedPanelTextColor }">
             <v-list-item>
               <v-list-item-title>VPC Address Space</v-list-item-title>
               <v-list-item-subtitle>{{ vpcInfo.network }}</v-list-item-subtitle>
@@ -153,7 +153,7 @@
 
       <!-- Generated Code Dialog -->
       <v-dialog v-model="showCodeDialog" max-width="900" max-height="90vh">
-        <v-card class="d-flex flex-column" style="max-height: 90vh;">
+        <v-card class="d-flex flex-column" style="max-height: 90vh;" :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
           <v-card-title class="d-flex align-center flex-shrink-0" :style="{ ...themeStyles.dialogHeader, position: 'sticky', top: 0, zIndex: 10 }">
             <span class="text-h6">{{ codeDialogTitle }}</span>
             <v-spacer></v-spacer>
@@ -177,8 +177,8 @@
               <v-tooltip activator="parent" location="bottom">Close</v-tooltip>
             </v-btn>
           </v-card-title>
-          <v-card-text class="flex-grow-1 overflow-y-auto pa-4" style="max-height: calc(90vh - 64px);">
-            <pre style="font-family: monospace; font-size: 0.875rem; white-space: pre-wrap; margin: 0;">{{ generatedCode }}</pre>
+          <v-card-text class="flex-grow-1 overflow-y-auto pa-4" style="max-height: calc(90vh - 64px);" :style="{ color: nestedPanelTextColor }">
+            <pre :style="{ fontFamily: 'monospace', fontSize: '0.875rem', whiteSpace: 'pre-wrap', margin: 0, color: nestedPanelTextColor }">{{ generatedCode }}</pre>
           </v-card-text>
         </v-card>
       </v-dialog>
@@ -189,13 +189,14 @@
       </v-alert>
 
       <!-- vSwitches -->
-      <v-expansion-panels v-if="vSwitches.length > 0" class="mt-4" multiple>
+      <v-expansion-panels v-if="vSwitches.length > 0" class="mt-4" multiple :style="{ backgroundColor: mainPanelBgColor }">
         <v-expansion-panel
           v-for="(vSwitch, index) in vSwitches"
           :key="index"
           :value="index"
+          :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }"
         >
-          <v-expansion-panel-title class="bg-surface-variant">
+          <v-expansion-panel-title class="bg-surface-variant" :style="{ color: mainPanelTextColor }">
             <div class="d-flex align-center justify-space-between" style="width: 100%;">
               <div class="d-flex align-center">
                 <v-icon class="mr-2">mdi-network</v-icon>
@@ -204,10 +205,10 @@
               <v-chip size="x-small" class="d-flex justify-center align-center ga-2 mt-2" :style="themeStyles.subnetChip">{{ vSwitch.usableIPs }} usable IPs</v-chip>
             </div>
           </v-expansion-panel-title>
-          <v-expansion-panel-text>
+          <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
             <v-row>
               <v-col cols="12" md="6">
-                <v-list density="compact">
+                <v-list density="compact" :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
                   <v-list-item>
                     <v-list-item-title class="font-weight-bold">Network Address</v-list-item-title>
                     <v-list-item-subtitle>{{ vSwitch.network }}</v-list-item-subtitle>
@@ -236,8 +237,10 @@
               </v-col>
 
               <v-col cols="12" md="6">
-                <v-list density="compact">
-                  <v-list-subheader class="text-error font-weight-bold">Alibaba Cloud Reserved IPs</v-list-subheader>
+                <v-list density="compact" :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+                  <v-list-item>
+                    <v-list-item-title class="font-weight-bold">Alibaba Cloud Reserved IPs</v-list-item-title>
+                  </v-list-item>
 
                   <v-list-item>
                     <v-list-item-title class="text-body-2">{{ vSwitch.reserved[0] }}</v-list-item-title>
@@ -272,8 +275,8 @@
       </v-expansion-panels>
 
       <!-- Requirements Info Box -->
-      <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
-        <div class="text-body-2">
+      <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
+        <div class="text-caption">
           <strong>Alibaba Cloud VPC Requirements:</strong><br>
           • {{ alicloudConfig.reservedIpCount }} IPs are reserved per vSwitch (network address, broadcast, and last 2 IPs)<br>
           • Minimum vSwitch size: /{{ alicloudConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - alicloudConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - alicloudConfig.minCidrPrefix) - alicloudConfig.reservedIpCount }} usable)<br>
@@ -286,15 +289,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { getThemeStyles } from '../config/cloudThemes'
+import { ref, onMounted, onUnmounted, inject, computed, type Ref } from 'vue'
+import { getThemeStyles, getMainPanelBackgroundColor, getMainPanelTextColor, getNestedPanelBackgroundColor, getNestedPanelTextColor } from '../config/cloudThemes'
 import { getCloudProviderConfig } from '../config/cloudProviderConfig'
 import {
   loadAliCloudAliyunTemplate,
   loadAliCloudTerraformTemplate
 } from '../utils/templateLoader'
 
-const themeStyles = getThemeStyles('alicloud')
+// Inject dark mode state from parent
+const isDarkMode = inject<Ref<boolean>>('isDarkMode', ref(false))
+
+// Compute theme styles based on dark mode
+const themeStyles = computed(() => getThemeStyles('alicloud', isDarkMode.value))
+const mainPanelBgColor = computed(() => getMainPanelBackgroundColor(isDarkMode.value))
+const mainPanelTextColor = computed(() => getMainPanelTextColor(isDarkMode.value))
+const nestedPanelBgColor = computed(() => getNestedPanelBackgroundColor(isDarkMode.value))
+const nestedPanelTextColor = computed(() => getNestedPanelTextColor(isDarkMode.value))
 const alicloudConfig = getCloudProviderConfig('alicloud')
 
 interface VPCInfo {

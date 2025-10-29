@@ -1,5 +1,5 @@
 <template>
-  <v-card>
+  <v-card :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
     <v-card-text>
       <!-- VNet Configuration -->
       <v-row>
@@ -45,14 +45,19 @@
         </v-col>
       </v-row>
 
+      <!-- Error Message -->
+      <v-alert v-if="errorMessage" type="error" class="mt-4" density="compact">
+        {{ errorMessage }}
+      </v-alert>
+
       <!-- Desirable Subnet CIDR Configuration -->
-      <v-expansion-panels class="mt-2 mb-4">
-        <v-expansion-panel>
-          <v-expansion-panel-title class="text-body-2">
+      <v-expansion-panels class="mt-2 mb-4" :style="{ backgroundColor: mainPanelBgColor }">
+        <v-expansion-panel :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+          <v-expansion-panel-title class="text-body-2" :style="{ color: mainPanelTextColor }">
             <v-icon class="mr-2" size="small">mdi-cog-outline</v-icon>
             <span>Advanced</span>
           </v-expansion-panel-title>
-          <v-expansion-panel-text>
+          <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
             <div class="text-subtitle-2 font-weight-bold mb-3">Desired Subnet Prefix</div>
             <v-row>
               <v-col cols="12">
@@ -86,7 +91,7 @@
                 </v-text-field>
               </v-col>
             </v-row>
-            <v-alert density="compact" type="info" variant="tonal" class="mt-2">
+            <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
               <div class="text-caption">
                 When set, subnets will be created with this CIDR prefix instead of automatically dividing the VNet. This allows you to avoid filling the entire VNet address space.
               </div>
@@ -96,10 +101,10 @@
       </v-expansion-panels>
 
       <!-- VNet Summary -->
-      <v-card v-if="vnetInfo" class="mt-4" variant="outlined">
+      <v-card v-if="vnetInfo" class="mt-4" variant="outlined" :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
         <v-card-title class="text-h6" :style="themeStyles.vpcInfoHeader">VNet Information</v-card-title>
-        <v-card-text>
-          <v-list density="compact">
+        <v-card-text :style="{ color: nestedPanelTextColor }">
+          <v-list density="compact" :style="{ backgroundColor: 'transparent', color: nestedPanelTextColor }">
             <v-list-item>
               <v-list-item-title>VNet Address Space</v-list-item-title>
               <v-list-item-subtitle>{{ vnetInfo.network }}</v-list-item-subtitle>
@@ -181,7 +186,7 @@
 
       <!-- Generated Code Dialog -->
       <v-dialog v-model="showCodeDialog" max-width="900" max-height="90vh">
-        <v-card class="d-flex flex-column" style="max-height: 90vh;">
+        <v-card class="d-flex flex-column" style="max-height: 90vh;" :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
           <v-card-title class="d-flex align-center flex-shrink-0" :style="{ ...themeStyles.dialogHeader, position: 'sticky', top: 0, zIndex: 10 }">
             <span class="text-h6">{{ codeDialogTitle }}</span>
             <v-spacer></v-spacer>
@@ -205,16 +210,11 @@
               <v-tooltip activator="parent" location="bottom">Close</v-tooltip>
             </v-btn>
           </v-card-title>
-          <v-card-text class="flex-grow-1 overflow-y-auto pa-4" style="max-height: calc(90vh - 64px);">
-            <pre style="font-family: monospace; font-size: 0.875rem; white-space: pre-wrap; margin: 0;">{{ generatedCode }}</pre>
+          <v-card-text class="flex-grow-1 overflow-y-auto pa-4" style="max-height: calc(90vh - 64px);" :style="{ color: nestedPanelTextColor }">
+            <pre :style="{ fontFamily: 'monospace', fontSize: '0.875rem', whiteSpace: 'pre-wrap', margin: 0, color: nestedPanelTextColor }">{{ generatedCode }}</pre>
           </v-card-text>
         </v-card>
       </v-dialog>
-
-      <!-- Error Message -->
-      <v-alert v-if="errorMessage" type="error" class="mt-4" density="compact">
-        {{ errorMessage }}
-      </v-alert>
 
       <!-- Subnets -->
       <v-expansion-panels v-if="subnets.length > 0" class="mt-4" multiple>
@@ -235,10 +235,10 @@
               
             </div>
           </v-expansion-panel-title>
-          <v-expansion-panel-text>
+          <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
             <v-row>
               <v-col cols="12" md="6">
-                <v-list density="compact">
+                <v-list density="compact" :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
                   <v-list-item>
                     <v-list-item-title class="font-weight-bold">Network Address</v-list-item-title>
                     <v-list-item-subtitle>{{ subnet.network }}</v-list-item-subtitle>
@@ -262,8 +262,10 @@
               </v-col>
 
               <v-col cols="12" md="6">
-                <v-list density="compact">
-                  <v-list-subheader class="text-error font-weight-bold">Azure Reserved IPs</v-list-subheader>
+                <v-list density="compact" :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+                  <v-list-item>
+                    <v-list-item-title class="font-weight-bold">Azure Reserved IPs</v-list-item-title>
+                  </v-list-item>
 
                   <v-list-item>
                     <v-list-item-title class="text-body-2">{{ subnet.reserved[0] }}</v-list-item-title>
@@ -298,8 +300,8 @@
       </v-expansion-panels>
 
       <!-- Requirements Info Box -->
-      <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
-        <div class="text-body-2">
+      <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
+        <div class="text-caption">
           <strong>Azure VNet Requirements:</strong><br>
           • {{ azureConfig.reservedIpCount }} IPs are reserved by Azure (First 4 IPs and last IP)<br>
           • Minimum subnet size: /{{ azureConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - azureConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - azureConfig.minCidrPrefix) - azureConfig.reservedIpCount }} usable)<br>
@@ -311,8 +313,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { getThemeStyles } from '../config/cloudThemes'
+import { ref, onMounted, onUnmounted, inject, computed, type Ref } from 'vue'
+import { getThemeStyles, getMainPanelBackgroundColor, getMainPanelTextColor, getNestedPanelBackgroundColor, getNestedPanelTextColor } from '../config/cloudThemes'
 import { getCloudProviderConfig } from '../config/cloudProviderConfig'
 import {
   loadAzureCLITemplate,
@@ -322,7 +324,15 @@ import {
   loadAzurePowerShellTemplate
 } from '../utils/templateLoader'
 
-const themeStyles = getThemeStyles('azure')
+// Inject dark mode state from parent
+const isDarkMode = inject<Ref<boolean>>('isDarkMode', ref(false))
+
+// Compute theme styles based on dark mode
+const themeStyles = computed(() => getThemeStyles('azure', isDarkMode.value))
+const mainPanelBgColor = computed(() => getMainPanelBackgroundColor(isDarkMode.value))
+const mainPanelTextColor = computed(() => getMainPanelTextColor(isDarkMode.value))
+const nestedPanelBgColor = computed(() => getNestedPanelBackgroundColor(isDarkMode.value))
+const nestedPanelTextColor = computed(() => getNestedPanelTextColor(isDarkMode.value))
 const azureConfig = getCloudProviderConfig('azure')
 
 interface VNetInfo {

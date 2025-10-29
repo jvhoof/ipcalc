@@ -1,5 +1,5 @@
 <template>
-  <v-card>
+  <v-card :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
     <v-card-text>
       <v-row>
         <v-col cols="12">
@@ -31,10 +31,10 @@
         </v-col>
       </v-row>
 
-      <v-card v-if="result" class="mt-4" variant="outlined">
+      <v-card v-if="result" class="mt-4" variant="outlined" :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
         <v-card-title class="text-h6" style="background-color: #104581; color: white;">Results</v-card-title>
-        <v-card-text>
-          <v-list density="compact">
+        <v-card-text :style="{ color: nestedPanelTextColor }">
+          <v-list density="compact" :style="{ backgroundColor: 'transparent', color: nestedPanelTextColor }">
             <v-list-item>
               <v-list-item-title>Network Address</v-list-item-title>
               <v-list-item-subtitle>{{ result.network }}</v-list-item-subtitle>
@@ -68,7 +68,7 @@
         </v-card-text>
       </v-card>
 
-      <v-card v-if="result" class="mt-4" variant="outlined">
+      <v-card v-if="result" class="mt-4" variant="outlined" :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
         <v-card-title
           class="text-h6"
           style="background-color: #104581; color: white; cursor: pointer; display: flex; align-items: center; justify-content: space-between;"
@@ -80,8 +80,8 @@
           ></v-icon>
         </v-card-title>
         <v-expand-transition>
-          <v-card-text v-show="!isBinaryCollapsed">
-            <v-list density="compact">
+          <v-card-text v-show="!isBinaryCollapsed" :style="{ color: nestedPanelTextColor }">
+            <v-list density="compact" :style="{ backgroundColor: 'transparent', color: nestedPanelTextColor }">
               <v-list-item>
                 <v-list-item-title>IP Address</v-list-item-title>
                 <v-list-item-subtitle style="font-family: monospace;">{{ result.ipBinary }}</v-list-item-subtitle>
@@ -110,8 +110,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, inject, computed, type Ref } from 'vue'
 import { getDefaultCidr } from '../config/cloudProviderConfig'
+import { getMainPanelBackgroundColor, getMainPanelTextColor, getNestedPanelBackgroundColor, getNestedPanelTextColor } from '../config/cloudThemes'
+
+// Inject dark mode state from parent
+const isDarkMode = inject<Ref<boolean>>('isDarkMode', ref(false))
+
+// Compute main panel colors based on dark mode
+const mainPanelBgColor = computed(() => getMainPanelBackgroundColor(isDarkMode.value))
+const mainPanelTextColor = computed(() => getMainPanelTextColor(isDarkMode.value))
+const nestedPanelBgColor = computed(() => getNestedPanelBackgroundColor(isDarkMode.value))
+const nestedPanelTextColor = computed(() => getNestedPanelTextColor(isDarkMode.value))
 
 interface SubnetResult {
   subnetMask: string
