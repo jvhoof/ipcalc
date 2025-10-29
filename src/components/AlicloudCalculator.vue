@@ -86,7 +86,7 @@
                 </v-text-field>
               </v-col>
             </v-row>
-            <v-alert density="compact" type="info" variant="tonal" class="mt-2">
+            <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
               <div class="text-caption">
                 When set, vSwitches will be created with this CIDR prefix instead of automatically dividing the VPC. This allows you to avoid filling the entire VPC address space.
               </div>
@@ -275,8 +275,8 @@
       </v-expansion-panels>
 
       <!-- Requirements Info Box -->
-      <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
-        <div class="text-body-2">
+      <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
+        <div class="text-caption">
           <strong>Alibaba Cloud VPC Requirements:</strong><br>
           • {{ alicloudConfig.reservedIpCount }} IPs are reserved per vSwitch (network address, broadcast, and last 2 IPs)<br>
           • Minimum vSwitch size: /{{ alicloudConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - alicloudConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - alicloudConfig.minCidrPrefix) - alicloudConfig.reservedIpCount }} usable)<br>

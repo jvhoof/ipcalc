@@ -86,7 +86,7 @@
                 </v-text-field>
               </v-col>
             </v-row>
-            <v-alert density="compact" type="info" variant="tonal" class="mt-2">
+            <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
               <div class="text-caption">
                 When set, subnets will be created with this CIDR prefix instead of automatically dividing the VPC. This allows you to avoid filling the entire VPC address space.
               </div>
@@ -290,8 +290,8 @@
       </v-expansion-panels>
 
       <!-- Requirements Info Box -->
-      <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
-        <div class="text-body-2">
+      <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start">
+        <div class="text-caption">
           <strong>AWS VPC Requirements:</strong><br>
           • {{ awsConfig.reservedIpCount }} IPs are reserved by AWS (First 4 IPs and last IP)<br>
           • Minimum subnet size: /{{ awsConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - awsConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - awsConfig.minCidrPrefix) - awsConfig.reservedIpCount }} usable)<br>

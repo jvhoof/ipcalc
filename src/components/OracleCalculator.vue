@@ -86,7 +86,7 @@
                 </v-text-field>
               </v-col>
             </v-row>
-            <v-alert density="compact" type="info" variant="tonal" class="mt-2">
+            <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
               <div class="text-caption">
                 When set, subnets will be created with this CIDR prefix instead of automatically dividing the VCN. This allows you to avoid filling the entire VCN address space.
               </div>
@@ -270,8 +270,8 @@
       </v-expansion-panels>
 
       <!-- Requirements Info Box -->
-      <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
-        <div class="text-body-2">
+      <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
+        <div class="text-caption">
           <strong>Oracle Cloud VCN Requirements:</strong><br>
           • {{ oracleConfig.reservedIpCount }} IPs are reserved by OCI (First 2 IPs and last IP)<br>
           • Minimum subnet size: /{{ oracleConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - oracleConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - oracleConfig.minCidrPrefix) - oracleConfig.reservedIpCount }} usable)<br>

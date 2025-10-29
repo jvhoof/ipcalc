@@ -45,6 +45,11 @@
         </v-col>
       </v-row>
 
+      <!-- Error Message -->
+      <v-alert v-if="errorMessage" type="error" class="mt-4" density="compact">
+        {{ errorMessage }}
+      </v-alert>
+
       <!-- Desirable Subnet CIDR Configuration -->
       <v-expansion-panels class="mt-2 mb-4" :style="{ backgroundColor: mainPanelBgColor }">
         <v-expansion-panel :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
@@ -86,7 +91,7 @@
                 </v-text-field>
               </v-col>
             </v-row>
-            <v-alert density="compact" type="info" variant="tonal" class="mt-2">
+            <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
               <div class="text-caption">
                 When set, subnets will be created with this CIDR prefix instead of automatically dividing the VNet. This allows you to avoid filling the entire VNet address space.
               </div>
@@ -211,11 +216,6 @@
         </v-card>
       </v-dialog>
 
-      <!-- Error Message -->
-      <v-alert v-if="errorMessage" type="error" class="mt-4" density="compact">
-        {{ errorMessage }}
-      </v-alert>
-
       <!-- Subnets -->
       <v-expansion-panels v-if="subnets.length > 0" class="mt-4" multiple>
         <v-expansion-panel
@@ -300,8 +300,8 @@
       </v-expansion-panels>
 
       <!-- Requirements Info Box -->
-      <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start" border-color="primary">
-        <div class="text-body-2">
+      <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
+        <div class="text-caption">
           <strong>Azure VNet Requirements:</strong><br>
           • {{ azureConfig.reservedIpCount }} IPs are reserved by Azure (First 4 IPs and last IP)<br>
           • Minimum subnet size: /{{ azureConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - azureConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - azureConfig.minCidrPrefix) - azureConfig.reservedIpCount }} usable)<br>
