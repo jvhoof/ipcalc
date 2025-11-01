@@ -44,6 +44,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -86,9 +93,16 @@ jobs:
 
       - name: Create Resource Group
         run: |
-          echo "Creating resource group: ${{ env.AZURE_RESOURCE_GROUP }}"
+          RG_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-rg"
+          VNET_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-vnet"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          echo "Creating resource group: $RG_NAME"
+          echo "VNET will be named: $VNET_NAME"
+          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
           az group create \
-            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name "$RG_NAME" \
             --location ${{ env.AZURE_LOCATION }} \
             --tags Environment=Test ManagedBy=GitHubActions
 
@@ -100,9 +114,9 @@ jobs:
 
           az deployment group create \
             --name "$DEPLOYMENT_NAME" \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --template-file /tmp/test-arm-template.json \
-            --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.RESOURCE_PREFIX }}" \
+            --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.JOB_PREFIX }}" \
             --output json > /tmp/deployment-output.json
 
           cat /tmp/deployment-output.json
@@ -126,7 +140,7 @@ jobs:
           # Check if VNET exists
           echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
           VNET_EXISTS=$(az network vnet show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.VNET_NAME }} \
             --query "name" -o tsv 2>/dev/null || echo "")
 
@@ -139,7 +153,7 @@ jobs:
           # Validate VNET CIDR
           echo "Validating VNET address space..."
           VNET_ADDRESS=$(az network vnet show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.VNET_NAME }} \
             --query "addressSpace.addressPrefixes[0]" -o tsv)
 
@@ -152,14 +166,14 @@ jobs:
           # List and validate subnets
           echo "Listing subnets..."
           SUBNETS=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[].{name:name, prefix:addressPrefix}" -o table)
 
           echo "$SUBNETS"
 
           SUBNET_COUNT=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "length(@)" -o tsv)
 
@@ -173,14 +187,14 @@ jobs:
           # Validate each subnet is within VNET CIDR
           echo "Validating subnet address spaces..."
           az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
             -o table
 
           # Check provisioning state
           FAILED_SUBNETS=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[?provisioningState!='Succeeded'].name" -o tsv)
 
@@ -199,7 +213,7 @@ jobs:
           echo "" >> /tmp/test-report.md
           echo "**Deployment Method:** ARM Template" >> /tmp/test-report.md
           echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
-          echo "**Resource Group:** ${{ env.AZURE_RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.RESOURCE_GROUP }}" >> /tmp/test-report.md
           echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
           echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
           echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
@@ -214,7 +228,7 @@ jobs:
           echo "" >> /tmp/test-report.md
           echo "### Resources Deployed:" >> /tmp/test-report.md
           echo '```' >> /tmp/test-report.md
-          az resource list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
           echo '```' >> /tmp/test-report.md
 
           cat /tmp/test-report.md
@@ -224,24 +238,31 @@ jobs:
         if: always()
         run: |
           echo "🧹 Cleaning up resources..."
-          echo "Deleting resource group: ${{ env.AZURE_RESOURCE_GROUP }}"
+          echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
 
           az group delete \
-            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.RESOURCE_GROUP }} \
             --yes \
             --no-wait
 
           echo "✅ Cleanup initiated (running in background)"
-          echo "Resource group ${{ env.AZURE_RESOURCE_GROUP }} will be deleted shortly"
+          echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
 
   deploy-with-azure-cli:
     name: Deploy and Test with Azure CLI
     runs-on: ubuntu-latest
 
     steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
       - name: Checkout code
         uses: actions/checkout@v4
- 
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -273,28 +294,40 @@ jobs:
           echo "Azure CLI script generated successfully"
           echo "Generated script contents:"
           cat /tmp/deploy-vnet-generated.sh
- 
+
+          # Set unique names for this job
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          RG_NAME="${JOB_PREFIX}-rg"
+          VNET_NAME="${JOB_PREFIX}-vnet"
+
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+
           # Customize the script with our specific environment values
-          sed -i 's/PREFIX="myproject"/PREFIX="${{ env.RESOURCE_PREFIX }}"/' /tmp/deploy-vnet-generated.sh
+          sed -i "s/PREFIX=\"myproject\"/PREFIX=\"${JOB_PREFIX}\"/" /tmp/deploy-vnet-generated.sh
           sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-generated.sh
 
           # Make it executable
           chmod +x /tmp/deploy-vnet-generated.sh
- 
+
           echo "Final deployment script:"
           cat /tmp/deploy-vnet-generated.sh
- 
+
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
- 
+
       - name: Execute Azure CLI Deployment
         id: deploy
         run: |
           echo "Executing Azure CLI deployment script..."
+          echo "Using prefix: ${{ env.JOB_PREFIX }}"
+          echo "Resource group will be: ${{ env.RESOURCE_GROUP }}"
+          echo "VNET will be: ${{ env.VNET_NAME }}"
           /tmp/deploy-vnet-generated.sh
-           echo "✅ Deployment script executed successfully"
+          echo "✅ Deployment script executed successfully"
  
       - name: Validate Deployment
         id: validate
@@ -304,7 +337,7 @@ jobs:
           # Check if VNET exists
           echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
           VNET_EXISTS=$(az network vnet show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.VNET_NAME }} \
             --query "name" -o tsv 2>/dev/null || echo "")
 
@@ -317,7 +350,7 @@ jobs:
           # Validate VNET CIDR
           echo "Validating VNET address space..."
           VNET_ADDRESS=$(az network vnet show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.VNET_NAME }} \
             --query "addressSpace.addressPrefixes[0]" -o tsv)
 
@@ -330,14 +363,14 @@ jobs:
           # List and validate subnets
           echo "Listing subnets..."
           SUBNETS=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[].{name:name, prefix:addressPrefix}" -o table)
 
           echo "$SUBNETS"
 
           SUBNET_COUNT=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "length(@)" -o tsv)
 
@@ -351,14 +384,14 @@ jobs:
           # Validate each subnet provisioning state
           echo "Validating subnet provisioning states..."
           az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
             -o table
 
           # Check provisioning state
           FAILED_SUBNETS=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[?provisioningState!='Succeeded'].name" -o tsv)
 
@@ -377,7 +410,7 @@ jobs:
           echo "" >> /tmp/test-report.md
           echo "**Deployment Method:** Azure CLI" >> /tmp/test-report.md
           echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
-          echo "**Resource Group:** ${{ env.AZURE_RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.RESOURCE_GROUP }}" >> /tmp/test-report.md
           echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
           echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
           echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
@@ -392,7 +425,7 @@ jobs:
           echo "" >> /tmp/test-report.md
           echo "### Resources Deployed:" >> /tmp/test-report.md
           echo '```' >> /tmp/test-report.md
-          az resource list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
           echo '```' >> /tmp/test-report.md
 
           cat /tmp/test-report.md
@@ -402,21 +435,28 @@ jobs:
         if: always()
         run: |
           echo "🧹 Cleaning up resources..."
-          echo "Deleting resource group: ${{ env.AZURE_RESOURCE_GROUP }}"
+          echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
 
           az group delete \
-            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.RESOURCE_GROUP }} \
             --yes \
             --no-wait
 
           echo "✅ Cleanup initiated (running in background)"
-          echo "Resource group ${{ env.AZURE_RESOURCE_GROUP }} will be deleted shortly"
+          echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
 
   deploy-with-terraform:
     name: Deploy and Test with Terraform
     runs-on: ubuntu-latest
 
     steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -464,9 +504,16 @@ jobs:
 
       - name: Create Resource Group
         run: |
-          echo "Creating resource group: ${{ env.AZURE_RESOURCE_GROUP }}"
+          RG_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-rg"
+          VNET_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-vnet"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          echo "Creating resource group: $RG_NAME"
+          echo "VNET will be named: $VNET_NAME"
+          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
           az group create \
-            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name "$RG_NAME" \
             --location ${{ env.AZURE_LOCATION }} \
             --tags Environment=Test ManagedBy=GitHubActions
 
@@ -501,8 +548,8 @@ jobs:
           echo "Planning Terraform deployment..."
           terraform plan \
             -var="location=${{ env.AZURE_LOCATION }}" \
-            -var="prefix=${{ env.RESOURCE_PREFIX }}" \
-            -var="resource_group_name=${{ env.AZURE_RESOURCE_GROUP }}" \
+            -var="prefix=${{ env.JOB_PREFIX }}" \
+            -var="resource_group_name=${{ env.RESOURCE_GROUP }}" \
             -out=tfplan
 
       - name: Apply Terraform Deployment
@@ -531,7 +578,7 @@ jobs:
           # Check if VNET exists
           echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
           VNET_EXISTS=$(az network vnet show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.VNET_NAME }} \
             --query "name" -o tsv 2>/dev/null || echo "")
 
@@ -544,7 +591,7 @@ jobs:
           # Validate VNET CIDR
           echo "Validating VNET address space..."
           VNET_ADDRESS=$(az network vnet show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.VNET_NAME }} \
             --query "addressSpace.addressPrefixes[0]" -o tsv)
 
@@ -557,14 +604,14 @@ jobs:
           # List and validate subnets
           echo "Listing subnets..."
           SUBNETS=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[].{name:name, prefix:addressPrefix}" -o table)
 
           echo "$SUBNETS"
 
           SUBNET_COUNT=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "length(@)" -o tsv)
 
@@ -578,14 +625,14 @@ jobs:
           # Validate each subnet is within VNET CIDR
           echo "Validating subnet address spaces..."
           az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
             -o table
 
           # Check provisioning state
           FAILED_SUBNETS=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[?provisioningState!='Succeeded'].name" -o tsv)
 
@@ -604,7 +651,7 @@ jobs:
           echo "" >> /tmp/test-report.md
           echo "**Deployment Method:** Terraform" >> /tmp/test-report.md
           echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
-          echo "**Resource Group:** ${{ env.AZURE_RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.RESOURCE_GROUP }}" >> /tmp/test-report.md
           echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
           echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
           echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
@@ -619,7 +666,7 @@ jobs:
           echo "" >> /tmp/test-report.md
           echo "### Resources Deployed:" >> /tmp/test-report.md
           echo '```' >> /tmp/test-report.md
-          az resource list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
           echo '```' >> /tmp/test-report.md
 
           cat /tmp/test-report.md
@@ -632,28 +679,35 @@ jobs:
           echo "🧹 Destroying Terraform resources..."
           terraform destroy -auto-approve \
             -var="location=${{ env.AZURE_LOCATION }}" \
-            -var="prefix=${{ env.RESOURCE_PREFIX }}" \
-            -var="resource_group_name=${{ env.AZURE_RESOURCE_GROUP }}" || true
+            -var="prefix=${{ env.JOB_PREFIX }}" \
+            -var="resource_group_name=${{ env.RESOURCE_GROUP }}" || true
 
       - name: Cleanup Resources
         if: always()
         run: |
           echo "🧹 Cleaning up resources..."
-          echo "Deleting resource group: ${{ env.AZURE_RESOURCE_GROUP }}"
+          echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
 
           az group delete \
-            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.RESOURCE_GROUP }} \
             --yes \
             --no-wait
 
           echo "✅ Cleanup initiated (running in background)"
-          echo "Resource group ${{ env.AZURE_RESOURCE_GROUP }} will be deleted shortly"
+          echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
 
   deploy-with-bicep:
     name: Deploy and Test with Bicep
     runs-on: ubuntu-latest
 
     steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -696,9 +750,16 @@ jobs:
 
       - name: Create Resource Group
         run: |
-          echo "Creating resource group: ${{ env.AZURE_RESOURCE_GROUP }}"
+          RG_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-rg"
+          VNET_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-vnet"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          echo "Creating resource group: $RG_NAME"
+          echo "VNET will be named: $VNET_NAME"
+          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
           az group create \
-            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name "$RG_NAME" \
             --location ${{ env.AZURE_LOCATION }} \
             --tags Environment=Test ManagedBy=GitHubActions
 
@@ -710,9 +771,9 @@ jobs:
 
           az deployment group create \
             --name "$DEPLOYMENT_NAME" \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --template-file /tmp/test-bicep.bicep \
-            --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.RESOURCE_PREFIX }}" \
+            --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.JOB_PREFIX }}" \
             --output json > /tmp/deployment-output.json
 
           cat /tmp/deployment-output.json
@@ -736,7 +797,7 @@ jobs:
           # Check if VNET exists
           echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
           VNET_EXISTS=$(az network vnet show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.VNET_NAME }} \
             --query "name" -o tsv 2>/dev/null || echo "")
 
@@ -749,7 +810,7 @@ jobs:
           # Validate VNET CIDR
           echo "Validating VNET address space..."
           VNET_ADDRESS=$(az network vnet show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.VNET_NAME }} \
             --query "addressSpace.addressPrefixes[0]" -o tsv)
 
@@ -762,14 +823,14 @@ jobs:
           # List and validate subnets
           echo "Listing subnets..."
           SUBNETS=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[].{name:name, prefix:addressPrefix}" -o table)
 
           echo "$SUBNETS"
 
           SUBNET_COUNT=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "length(@)" -o tsv)
 
@@ -783,14 +844,14 @@ jobs:
           # Validate each subnet is within VNET CIDR
           echo "Validating subnet address spaces..."
           az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
             -o table
 
           # Check provisioning state
           FAILED_SUBNETS=$(az network vnet subnet list \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --vnet-name ${{ env.VNET_NAME }} \
             --query "[?provisioningState!='Succeeded'].name" -o tsv)
 
@@ -809,7 +870,7 @@ jobs:
           echo "" >> /tmp/test-report.md
           echo "**Deployment Method:** Bicep" >> /tmp/test-report.md
           echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
-          echo "**Resource Group:** ${{ env.AZURE_RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.RESOURCE_GROUP }}" >> /tmp/test-report.md
           echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
           echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
           echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
@@ -824,7 +885,7 @@ jobs:
           echo "" >> /tmp/test-report.md
           echo "### Resources Deployed:" >> /tmp/test-report.md
           echo '```' >> /tmp/test-report.md
-          az resource list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
           echo '```' >> /tmp/test-report.md
 
           cat /tmp/test-report.md
@@ -834,12 +895,12 @@ jobs:
         if: always()
         run: |
           echo "🧹 Cleaning up resources..."
-          echo "Deleting resource group: ${{ env.AZURE_RESOURCE_GROUP }}"
+          echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
 
           az group delete \
-            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.RESOURCE_GROUP }} \
             --yes \
             --no-wait
 
           echo "✅ Cleanup initiated (running in background)"
-          echo "Resource group ${{ env.AZURE_RESOURCE_GROUP }} will be deleted shortly"
+          echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"

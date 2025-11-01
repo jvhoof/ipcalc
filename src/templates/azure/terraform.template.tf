@@ -46,7 +46,7 @@ variable "vnet_cidr" {
 # Resource Group
 # ========================================
 
-resource "azurerm_resource_group" "main" {
+resource "azurerm_resource_group" "rg" {
   name     = "${var.prefix}-rg"
   location = var.location
 
@@ -60,11 +60,11 @@ resource "azurerm_resource_group" "main" {
 # Virtual Network
 # ========================================
 
-resource "azurerm_virtual_network" "main" {
+resource "azurerm_virtual_network" "vnet" {
   name                = "${var.prefix}-vnet"
   address_space       = [var.vnet_cidr]
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
 
   tags = {
     Environment = "Production"
@@ -84,17 +84,17 @@ resource "azurerm_virtual_network" "main" {
 
 output "resource_group_name" {
   description = "Name of the resource group"
-  value       = azurerm_resource_group.main.name
+  value       = azurerm_resource_group.rg.name
 }
 
 output "vnet_name" {
   description = "Name of the virtual network"
-  value       = azurerm_virtual_network.main.name
+  value       = azurerm_virtual_network.vnet.name
 }
 
 output "vnet_id" {
   description = "ID of the virtual network"
-  value       = azurerm_virtual_network.main.id
+  value       = azurerm_virtual_network.vnet.id
 }
 
 {{subnetOutputs}}
