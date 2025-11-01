@@ -248,173 +248,173 @@ jobs:
           echo "✅ Cleanup initiated (running in background)"
           echo "Resource group ${{ env.AZURE_RESOURCE_GROUP }} will be deleted shortly"
 
-#  deploy-with-azure-cli:
-#    name: Deploy and Test with Azure CLI
-#    runs-on: ubuntu-latest
-#    # Run if deployment_method is explicitly azure-cli
-#    if: |
-#      github.event.inputs.deployment_method == 'azure-cli' ||
-#      (github.event_name != 'workflow_dispatch' && vars.AZURE_DEPLOYMENT_METHOD == 'azure-cli')
-#
-#    steps:
-#      - name: Checkout code
-#        uses: actions/checkout@v4
-#
-#      - name: Setup Node.js
-#        uses: actions/setup-node@v4
-#        with:
-#          node-version: '20'
-#          cache: 'npm'
-#
-#      - name: Install Dependencies
-#        run: npm ci
-#
-#      - name: Generate Azure CLI Script using ipcalc CLI
-#        id: generate-script
-#        run: |
-#          echo "Generating Azure CLI script using ipcalc CLI..."
-#          echo "Parameters:"
-#          echo "  Provider: azure"
-#          echo "  CIDR: ${{ env.VNET_CIDR }}"
-#          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
-#          echo "  Location: ${{ env.AZURE_LOCATION }}"
-#          echo "  Prefix: ${{ env.RESOURCE_PREFIX }}"
-#
-#          # Generate Azure CLI script using ipcalc CLI
-#          npm run cli -- \
-#            --provider azure \
-#            --cidr ${{ env.VNET_CIDR }} \
-#            --subnets ${{ env.SUBNET_COUNT }} \
-#            --output cli \
-#            --file /tmp/deploy-vnet-generated.sh
-#
-#          echo "Azure CLI script generated successfully"
-#          echo "Generated script contents:"
-#          cat /tmp/deploy-vnet-generated.sh
-#
-#          # Customize the script with our specific environment values
-#          sed -i 's/PREFIX="myproject"/PREFIX="${{ env.RESOURCE_PREFIX }}"/' /tmp/deploy-vnet-generated.sh
-#          sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-generated.sh
-#
-#          # Make it executable
-#          chmod +x /tmp/deploy-vnet-generated.sh
-#
-#          echo "Final deployment script:"
-#          cat /tmp/deploy-vnet-generated.sh
-#
-#      - name: Azure Login
-#        uses: azure/login@v2
-#        with:
-#          creds: ${{ secrets.AZURE_CREDENTIALS }}
-#
-#      - name: Execute Azure CLI Deployment
-#        id: deploy
-#        run: |
-#          echo "Executing Azure CLI deployment script..."
-#          /tmp/deploy-vnet-generated.sh
-      #     echo "✅ Deployment script executed successfully"
+ deploy-with-azure-cli:
+   name: Deploy and Test with Azure CLI
+   runs-on: ubuntu-latest
+   # Run if deployment_method is explicitly azure-cli
+   if: |
+     github.event.inputs.deployment_method == 'azure-cli' ||
+     (github.event_name != 'workflow_dispatch' && vars.AZURE_DEPLOYMENT_METHOD == 'azure-cli')
 
-      # - name: Validate Deployment
-      #   id: validate
-      #   run: |
-      #     echo "🔍 Validating deployment..."
+   steps:
+     - name: Checkout code
+       uses: actions/checkout@v4
 
-      #     # Check if VNET exists
-      #     echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
-      #     VNET_EXISTS=$(az network vnet show \
-      #       --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-      #       --name ${{ env.VNET_NAME }} \
-      #       --query "name" -o tsv 2>/dev/null || echo "")
+     - name: Setup Node.js
+       uses: actions/setup-node@v4
+       with:
+         node-version: '20'
+         cache: 'npm'
 
-      #     if [ -z "$VNET_EXISTS" ]; then
-      #       echo "❌ VNET not found!"
-      #       exit 1
-      #     fi
-      #     echo "✅ VNET exists: $VNET_EXISTS"
+     - name: Install Dependencies
+       run: npm ci
 
-      #     # Validate VNET CIDR
-      #     echo "Validating VNET address space..."
-      #     VNET_ADDRESS=$(az network vnet show \
-      #       --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-      #       --name ${{ env.VNET_NAME }} \
-      #       --query "addressSpace.addressPrefixes[0]" -o tsv)
+     - name: Generate Azure CLI Script using ipcalc CLI
+       id: generate-script
+       run: |
+         echo "Generating Azure CLI script using ipcalc CLI..."
+         echo "Parameters:"
+         echo "  Provider: azure"
+         echo "  CIDR: ${{ env.VNET_CIDR }}"
+         echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+         echo "  Location: ${{ env.AZURE_LOCATION }}"
+         echo "  Prefix: ${{ env.RESOURCE_PREFIX }}"
 
-      #     if [ "$VNET_ADDRESS" != "${{ env.VNET_CIDR }}" ]; then
-      #       echo "❌ VNET CIDR mismatch! Expected: ${{ env.VNET_CIDR }}, Got: $VNET_ADDRESS"
-      #       exit 1
-      #     fi
-      #     echo "✅ VNET CIDR is correct: $VNET_ADDRESS"
+         # Generate Azure CLI script using ipcalc CLI
+         npm run cli -- \
+           --provider azure \
+           --cidr ${{ env.VNET_CIDR }} \
+           --subnets ${{ env.SUBNET_COUNT }} \
+           --output cli \
+           --file /tmp/deploy-vnet-generated.sh
 
-      #     # List and validate subnets
-      #     echo "Listing subnets..."
-      #     SUBNETS=$(az network vnet subnet list \
-      #       --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-      #       --vnet-name ${{ env.VNET_NAME }} \
-      #       --query "[].{name:name, prefix:addressPrefix}" -o table)
+         echo "Azure CLI script generated successfully"
+         echo "Generated script contents:"
+         cat /tmp/deploy-vnet-generated.sh
 
-      #     echo "$SUBNETS"
+         # Customize the script with our specific environment values
+         sed -i 's/PREFIX="myproject"/PREFIX="${{ env.RESOURCE_PREFIX }}"/' /tmp/deploy-vnet-generated.sh
+         sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-generated.sh
 
-      #     SUBNET_COUNT=$(az network vnet subnet list \
-      #       --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-      #       --vnet-name ${{ env.VNET_NAME }} \
-      #       --query "length(@)" -o tsv)
+         # Make it executable
+         chmod +x /tmp/deploy-vnet-generated.sh
 
-      #     echo "✅ Found $SUBNET_COUNT subnet(s)"
+         echo "Final deployment script:"
+         cat /tmp/deploy-vnet-generated.sh
 
-      #     if [ "$SUBNET_COUNT" -lt 1 ]; then
-      #       echo "❌ No subnets found!"
-      #       exit 1
-      #     fi
+     - name: Azure Login
+       uses: azure/login@v2
+       with:
+         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      #     # Validate each subnet provisioning state
-      #     echo "Validating subnet provisioning states..."
-      #     az network vnet subnet list \
-      #       --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-      #       --vnet-name ${{ env.VNET_NAME }} \
-      #       --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
-      #       -o table
+     - name: Execute Azure CLI Deployment
+       id: deploy
+       run: |
+         echo "Executing Azure CLI deployment script..."
+         /tmp/deploy-vnet-generated.sh
+          echo "✅ Deployment script executed successfully"
 
-      #     # Check provisioning state
-      #     FAILED_SUBNETS=$(az network vnet subnet list \
-      #       --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-      #       --vnet-name ${{ env.VNET_NAME }} \
-      #       --query "[?provisioningState!='Succeeded'].name" -o tsv)
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
 
-      #     if [ -n "$FAILED_SUBNETS" ]; then
-      #       echo "❌ Some subnets failed to provision: $FAILED_SUBNETS"
-      #       exit 1
-      #     fi
+          # Check if VNET exists
+          echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
 
-      #     echo "✅ All subnets provisioned successfully"
-      #     echo "✅ Validation completed successfully!"
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ VNET not found!"
+            exit 1
+          fi
+          echo "✅ VNET exists: $VNET_EXISTS"
 
-      # - name: Generate Test Report
-      #   if: always()
-      #   run: |
-      #     echo "## 📊 Azure VNET Deployment Test Report" > /tmp/test-report.md
-      #     echo "" >> /tmp/test-report.md
-      #     echo "**Deployment Method:** Azure CLI" >> /tmp/test-report.md
-      #     echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
-      #     echo "**Resource Group:** ${{ env.AZURE_RESOURCE_GROUP }}" >> /tmp/test-report.md
-      #     echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
-      #     echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
-      #     echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
-      #     echo "" >> /tmp/test-report.md
+          # Validate VNET CIDR
+          echo "Validating VNET address space..."
+          VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
 
-      #     if [ "${{ steps.validate.outcome }}" == "success" ]; then
-      #       echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
-      #     else
-      #       echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
-      #     fi
+          if [ "$VNET_ADDRESS" != "${{ env.VNET_CIDR }}" ]; then
+            echo "❌ VNET CIDR mismatch! Expected: ${{ env.VNET_CIDR }}, Got: $VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ VNET CIDR is correct: $VNET_ADDRESS"
 
-      #     echo "" >> /tmp/test-report.md
-      #     echo "### Resources Deployed:" >> /tmp/test-report.md
-      #     echo '```' >> /tmp/test-report.md
-      #     az resource list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
-      #     echo '```' >> /tmp/test-report.md
+          # List and validate subnets
+          echo "Listing subnets..."
+          SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[].{name:name, prefix:addressPrefix}" -o table)
 
-      #     cat /tmp/test-report.md
-      #     cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+          echo "$SUBNETS"
+
+          SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          # Validate each subnet provisioning state
+          echo "Validating subnet provisioning states..."
+          az network vnet subnet list \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
+            -o table
+
+          # Check provisioning state
+          FAILED_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_SUBNETS" ]; then
+            echo "❌ Some subnets failed to provision: $FAILED_SUBNETS"
+            exit 1
+          fi
+
+          echo "✅ All subnets provisioned successfully"
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 Azure VNET Deployment Test Report" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** Azure CLI" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.AZURE_RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
+          echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
+          echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
+          else
+            echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
+          fi
+
+          echo "" >> /tmp/test-report.md
+          echo "### Resources Deployed:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
 
       - name: Cleanup Resources
         if: always()
