@@ -80,6 +80,11 @@ jobs:
           echo "ARM template generated successfully"
           echo "Template contents:"
           cat /tmp/test-arm-template.json
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: my-artifact
+          path: /tmp/test-arm-template.json
 
       - name: Azure Login
         uses: azure/login@v2
