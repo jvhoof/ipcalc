@@ -248,72 +248,72 @@ jobs:
           echo "✅ Cleanup initiated (running in background)"
           echo "Resource group ${{ env.AZURE_RESOURCE_GROUP }} will be deleted shortly"
 
- deploy-with-azure-cli:
-   name: Deploy and Test with Azure CLI
-   runs-on: ubuntu-latest
-   # Run if deployment_method is explicitly azure-cli
-   if: |
-     github.event.inputs.deployment_method == 'azure-cli' ||
-     (github.event_name != 'workflow_dispatch' && vars.AZURE_DEPLOYMENT_METHOD == 'azure-cli')
+  deploy-with-azure-cli:
+    name: Deploy and Test with Azure CLI
+    runs-on: ubuntu-latest
+    # Run if deployment_method is explicitly azure-cli
+    if: |
+      github.event.inputs.deployment_method == 'azure-cli' ||
+      (github.event_name != 'workflow_dispatch' && vars.AZURE_DEPLOYMENT_METHOD == 'azure-cli')
 
-   steps:
-     - name: Checkout code
-       uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+ 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+ 
+      - name: Install Dependencies
+        run: npm ci
+ 
+      - name: Generate Azure CLI Script using ipcalc CLI
+        id: generate-script
+        run: |
+          echo "Generating Azure CLI script using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  CIDR: ${{ env.VNET_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Location: ${{ env.AZURE_LOCATION }}"
+          echo "  Prefix: ${{ env.RESOURCE_PREFIX }}"
+ 
+          # Generate Azure CLI script using ipcalc CLI
+          npm run cli -- \
+            --provider azure \
+            --cidr ${{ env.VNET_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output cli \
+            --file /tmp/deploy-vnet-generated.sh
+ 
+          echo "Azure CLI script generated successfully"
+          echo "Generated script contents:"
+          cat /tmp/deploy-vnet-generated.sh
+ 
+          # Customize the script with our specific environment values
+          sed -i 's/PREFIX="myproject"/PREFIX="${{ env.RESOURCE_PREFIX }}"/' /tmp/deploy-vnet-generated.sh
+          sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-generated.sh
 
-     - name: Setup Node.js
-       uses: actions/setup-node@v4
-       with:
-         node-version: '20'
-         cache: 'npm'
-
-     - name: Install Dependencies
-       run: npm ci
-
-     - name: Generate Azure CLI Script using ipcalc CLI
-       id: generate-script
-       run: |
-         echo "Generating Azure CLI script using ipcalc CLI..."
-         echo "Parameters:"
-         echo "  Provider: azure"
-         echo "  CIDR: ${{ env.VNET_CIDR }}"
-         echo "  Subnets: ${{ env.SUBNET_COUNT }}"
-         echo "  Location: ${{ env.AZURE_LOCATION }}"
-         echo "  Prefix: ${{ env.RESOURCE_PREFIX }}"
-
-         # Generate Azure CLI script using ipcalc CLI
-         npm run cli -- \
-           --provider azure \
-           --cidr ${{ env.VNET_CIDR }} \
-           --subnets ${{ env.SUBNET_COUNT }} \
-           --output cli \
-           --file /tmp/deploy-vnet-generated.sh
-
-         echo "Azure CLI script generated successfully"
-         echo "Generated script contents:"
-         cat /tmp/deploy-vnet-generated.sh
-
-         # Customize the script with our specific environment values
-         sed -i 's/PREFIX="myproject"/PREFIX="${{ env.RESOURCE_PREFIX }}"/' /tmp/deploy-vnet-generated.sh
-         sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-generated.sh
-
-         # Make it executable
-         chmod +x /tmp/deploy-vnet-generated.sh
-
-         echo "Final deployment script:"
-         cat /tmp/deploy-vnet-generated.sh
-
-     - name: Azure Login
-       uses: azure/login@v2
-       with:
-         creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-     - name: Execute Azure CLI Deployment
-       id: deploy
-       run: |
-         echo "Executing Azure CLI deployment script..."
-         /tmp/deploy-vnet-generated.sh
-          echo "✅ Deployment script executed successfully"
-
+          # Make it executable
+          chmod +x /tmp/deploy-vnet-generated.sh
+ 
+          echo "Final deployment script:"
+          cat /tmp/deploy-vnet-generated.sh
+ 
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+ 
+      - name: Execute Azure CLI Deployment
+        id: deploy
+        run: |
+          echo "Executing Azure CLI deployment script..."
+          /tmp/deploy-vnet-generated.sh
+           echo "✅ Deployment script executed successfully"
+ 
       - name: Validate Deployment
         id: validate
         run: |
