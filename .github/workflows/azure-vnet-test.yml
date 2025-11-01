@@ -40,7 +40,7 @@ env:
   DEPLOYMENT_METHOD: ${{ github.event.inputs.deployment_method || vars.AZURE_DEPLOYMENT_METHOD || 'arm-template' }}
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX || 'ipcalc-test' }}
   AZURE_LOCATION: ${{ github.event.inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
-  VNET_CIDR: ${{ github.event.inputs.vnet_cidr || vars.AZURE_VNET_CIDR || '172.16.1.0/16' }}
+  VNET_CIDR: ${{ github.event.inputs.vnet_cidr || vars.AZURE_VNET_CIDR || '172.16.1.0/24' }}
   SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.AZURE_SUBNET_COUNT || '4' }}
 
   # Derived environment variables
