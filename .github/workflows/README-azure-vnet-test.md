@@ -18,7 +18,7 @@ This GitHub Actions workflow (`azure-vnet-test.yml`) automatically deploys, vali
 
 ## Prerequisites
 
-### Azure Credentials Setup
+### 1. Azure Credentials Setup
 
 You need to create an Azure Service Principal and store its credentials in GitHub Secrets.
 
@@ -53,6 +53,46 @@ The JSON should look like this:
   "managementEndpointUrl": "https://management.core.windows.net/"
 }
 ```
+
+### 2. Environment Variables (Optional)
+
+You can configure default values using GitHub repository variables. These will be used when the workflow is triggered automatically (on push/PR) or when workflow_dispatch inputs are not provided.
+
+**To set repository variables:**
+
+1. Go to your repository settings
+2. Navigate to **Secrets and variables** → **Actions** → **Variables** tab
+3. Click **New repository variable**
+4. Add any of the following variables:
+
+| Variable Name | Description | Default if not set |
+|--------------|-------------|-------------------|
+| `AZURE_DEPLOYMENT_METHOD` | Deployment method: `arm-template` or `azure-cli` | `arm-template` |
+| `AZURE_RESOURCE_PREFIX` | Prefix for Azure resource names | `ipcalc-test` |
+| `AZURE_LOCATION` | Azure region (e.g., `eastus`, `westus2`) | `eastus` |
+| `AZURE_VNET_CIDR` | VNET CIDR block (e.g., `10.0.0.0/16`) | `10.0.0.0/16` |
+| `AZURE_SUBNET_COUNT` | Number of subnets to create (1-256) | `2` |
+
+**Precedence Order:**
+
+The workflow uses the following precedence (highest to lowest):
+
+1. **Manual workflow_dispatch inputs** (when you run the workflow manually)
+2. **Repository variables** (configured in Settings → Variables)
+3. **Hard-coded defaults** (built into the workflow)
+
+**Example Configuration:**
+
+For a production setup, you might set:
+```
+AZURE_DEPLOYMENT_METHOD = arm-template
+AZURE_RESOURCE_PREFIX = myapp-test
+AZURE_LOCATION = westeurope
+AZURE_VNET_CIDR = 172.16.0.0/16
+AZURE_SUBNET_COUNT = 4
+```
+
+This way, automatic triggers (push to beta branch, PR changes) will use these values, but you can still override them when running manually.
 
 ## Usage
 
