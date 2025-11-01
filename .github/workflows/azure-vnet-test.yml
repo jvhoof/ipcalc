@@ -3,14 +3,6 @@ name: Azure VNET Deployment Test
 on:
   workflow_dispatch:  # Allow manual trigger with parameters
     inputs:
-      deployment_method:
-        description: 'Deployment method to use'
-        required: true
-        type: choice
-        options:
-          - arm-template
-          - azure-cli
-        default: 'arm-template'
       prefix:
         description: 'Resource prefix for naming'
         required: false
@@ -37,7 +29,6 @@ on:
 
 env:
   # Workflow parameters - workflow_dispatch inputs take precedence over env vars
-  DEPLOYMENT_METHOD: ${{ github.event.inputs.deployment_method || vars.AZURE_DEPLOYMENT_METHOD || 'arm-template' }}
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX || 'ipcalc-test' }}
   AZURE_LOCATION: ${{ github.event.inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
   VNET_CIDR: ${{ github.event.inputs.vnet_cidr || vars.AZURE_VNET_CIDR || '172.16.1.0/24' }}
@@ -251,10 +242,6 @@ jobs:
   deploy-with-azure-cli:
     name: Deploy and Test with Azure CLI
     runs-on: ubuntu-latest
-    # Run if deployment_method is explicitly azure-cli
-    if: |
-      github.event.inputs.deployment_method == 'azure-cli' ||
-      (github.event_name != 'workflow_dispatch' && vars.AZURE_DEPLOYMENT_METHOD == 'azure-cli')
 
     steps:
       - name: Checkout code
