@@ -116,7 +116,7 @@ jobs:
             --name "$DEPLOYMENT_NAME" \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --template-file /tmp/test-arm-template.json \
-            --parameters vnetCidr="${{ env.VNET_CIDR }}" \
+            --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.RESOURCE_PREFIX }}" \
             --output json > /tmp/deployment-output.json
 
           cat /tmp/deployment-output.json
