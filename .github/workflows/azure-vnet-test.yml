@@ -502,21 +502,6 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Create Resource Group
-        run: |
-          RG_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-rg"
-          VNET_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-vnet"
-          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
-          echo "Creating resource group: $RG_NAME"
-          echo "VNET will be named: $VNET_NAME"
-          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
-          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
-          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
-          az group create \
-            --name "$RG_NAME" \
-            --location ${{ env.AZURE_LOCATION }} \
-            --tags Environment=Test ManagedBy=GitHubActions
-
       - name: Setup Azure Credentials for Terraform
         run: |
           # Extract Azure credentials from the service principal JSON
@@ -549,7 +534,6 @@ jobs:
           terraform plan \
             -var="location=${{ env.AZURE_LOCATION }}" \
             -var="prefix=${{ env.JOB_PREFIX }}" \
-            -var="resource_group_name=${{ env.RESOURCE_GROUP }}" \
             -out=tfplan
 
       - name: Apply Terraform Deployment
