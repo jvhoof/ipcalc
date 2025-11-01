@@ -533,7 +533,7 @@ jobs:
           echo "Planning Terraform deployment..."
           terraform plan \
             -var "location=${{ env.AZURE_LOCATION }}" \
-            -var "prefix=${{ env.JOB_PREFIX }}" \
+            -var "prefix=${{ env.RESOURCE_PREFIX }}" \
             -out=tfplan
 
       - name: Apply Terraform Deployment
@@ -543,7 +543,7 @@ jobs:
           echo "Applying Terraform deployment..."
           terraform apply -auto-approve 
             -var "location=${{ env.AZURE_LOCATION }}" \
-            -var "prefix=${{ env.JOB_PREFIX }}" \
+            -var "prefix=${{ env.RESOURCE_PREFIX }}" \
             tfplan
 
           # Extract outputs
