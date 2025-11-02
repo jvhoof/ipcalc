@@ -35,7 +35,7 @@ env:
   SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.AZURE_SUBNET_COUNT || '4' }}
 
   # Derived environment variables
-  AZURE_RESOURCE_GROUP: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX || 'ipcalc-test' }}-rg
+  RESOURCE_GROUP: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX || 'ipcalc-test' }}-rg
   VNET_NAME: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX || 'ipcalc-test' }}-vnet
 
 jobs:
@@ -457,9 +457,11 @@ jobs:
           echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
           echo "Generated unique ID: $UNIQUE_ID"
           RG_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-rg"
+          VNET_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-vnet"
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
-          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
           echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
 
       - name: Checkout code
         uses: actions/checkout@v4
