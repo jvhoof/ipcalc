@@ -541,7 +541,7 @@ jobs:
         working-directory: /tmp
         run: |
           echo "Applying Terraform deployment..."
-          terraform apply -auto-approve 
+          terraform apply -auto-approve \
             -var "location=${{ env.AZURE_LOCATION }}" \
             -var "prefix=${{ env.RESOURCE_PREFIX }}" \
             tfplan
