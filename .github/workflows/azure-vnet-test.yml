@@ -662,28 +662,31 @@ jobs:
           cat /tmp/test-report.md
           cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
 
-      - name: Destroy Terraform Resources
+      - name: Cleanup Resources
         if: always()
         working-directory: /tmp
         run: |
-          echo "🧹 Destroying Terraform resources..."
-          terraform destroy -auto-approve \
-            -var "location=${{ env.AZURE_LOCATION }}" \
-            -var "prefix=${{ env.JOB_PREFIX }}" || true
-
-      - name: Cleanup Resources
-        if: always()
-        run: |
           echo "🧹 Cleaning up resources..."
-          echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
 
-          az group delete \
-            --name ${{ env.RESOURCE_GROUP }} \
-            --yes \
-            --no-wait
+          # Try to destroy using Terraform first
+          echo "Attempting to destroy resources using Terraform..."
+          if terraform destroy -auto-approve \
+            -var "location=${{ env.AZURE_LOCATION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}"; then
+            echo "✅ Terraform destroy completed successfully"
+          else
+            echo "⚠️ Terraform destroy failed, falling back to Azure CLI cleanup"
+            echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
 
-          echo "✅ Cleanup initiated (running in background)"
-          echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
+            az group delete \
+              --name ${{ env.RESOURCE_GROUP }} \
+              --yes \
+              --no-wait
+
+            echo "✅ Resource group deletion initiated (running in background)"
+          fi
+
+          echo "✅ Cleanup completed"
 
   deploy-with-bicep:
     name: Deploy and Test with Bicep
