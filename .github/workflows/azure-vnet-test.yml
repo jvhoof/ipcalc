@@ -456,8 +456,8 @@ jobs:
           UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
           echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
           echo "Generated unique ID: $UNIQUE_ID"
-          RG_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-rg"
-          VNET_NAME="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}-vnet"
+          RG_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-rg"
+          VNET_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-vnet"
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
           echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
           echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
