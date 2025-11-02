@@ -668,9 +668,8 @@ jobs:
         run: |
           echo "🧹 Destroying Terraform resources..."
           terraform destroy -auto-approve \
-            -var="location=${{ env.AZURE_LOCATION }}" \
-            -var="prefix=${{ env.JOB_PREFIX }}" \
-            -var="resource_group_name=${{ env.RESOURCE_GROUP }}" || true
+            -var "location=${{ env.AZURE_LOCATION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}" || true
 
       - name: Cleanup Resources
         if: always()
