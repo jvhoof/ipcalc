@@ -39,6 +39,11 @@ jobs:
     name: Deploy and Test with Terraform
     runs-on: ubuntu-latest
 
+    # Add these permissions
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
       - name: Generate Unique Identifier
         id: unique-id
