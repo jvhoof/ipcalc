@@ -68,7 +68,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Configure AWS Credentials for China region audience
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v5.1.0
         with:
           aws-region: eu-north-1
