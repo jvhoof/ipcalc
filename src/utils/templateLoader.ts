@@ -308,7 +308,7 @@ export async function loadAWSTerraformTemplate(data: TemplateData): Promise<stri
     subnetResources += `  cidr_block        = var.subnet${index + 1}_cidr\n`
     subnetResources += `  availability_zone = var.subnet${index + 1}_az\n\n`
     subnetResources += `  tags = {\n`
-    subnetResources += `    Name        = "\${aws_vpc.vpc.name}-subnet${index + 1}"\n`
+    subnetResources += `    Name        = "\${lookup(aws_vpc.vpc.tags, "Name")}-subnet${index + 1}"\n`
     subnetResources += `    Environment = "Production"\n`
     subnetResources += `    ManagedBy   = "Terraform"\n`
     subnetResources += `  }\n`
