@@ -1,0 +1,314 @@
+name: AWS VPC Deployment Test
+
+on:
+  workflow_dispatch:  # Allow manual trigger with parameters
+    inputs:
+      prefix:
+        description: 'Resource prefix for naming'
+        required: false
+        default: 'ipcalc-qa'
+      region:
+        description: 'AWS region'
+        required: false
+        default: 'eu-north-1'
+      vpc_cidr:
+        description: 'VPC CIDR block'
+        required: false
+        default: '172.16.1.0/24'
+      subnet_count:
+        description: 'Number of subnets to create'
+        required: false
+        default: '4'
+  push:
+    branches:
+      - beta  # Trigger on push to beta branch
+  pull_request:
+    paths:
+      - 'src/templates/aws/**'
+      - '.github/workflows/aws-vpc-test.yml'
+
+env:
+  # Workflow parameters - workflow_dispatch inputs take precedence over env vars
+  RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.AWS_RESOURCE_PREFIX || 'ipcalc-test' }}
+  AWS_REGION: ${{ github.event.inputs.region || vars.AWS_REGION || 'eu-north-1' }}
+  VPC_CIDR: ${{ github.event.inputs.vpc_cidr || vars.AWS_VPC_CIDR || '172.16.1.0/24' }}
+  SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.AWS_SUBNET_COUNT || '4' }}
+
+jobs:
+  deploy-with-terraform:
+    name: Deploy and Test with Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+          VPC_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-vpc"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Configure AWS Credentials for China region audience
+        uses: aws-actions/configure-aws-credentials@v5.1.0
+        with:
+          aws-region: eu-north-1
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: JVHIPCalcSession
+
+      - name: Generate Terraform Configuration using ipcalc CLI
+        id: generate-terraform
+        run: |
+          echo "Generating Terraform configuration using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: aws"
+          echo "  CIDR: ${{ env.VPC_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Region: ${{ env.AWS_REGION }}"
+          echo "  Prefix: ${{ env.JOB_PREFIX }}"
+
+          # Generate Terraform configuration using ipcalc CLI
+          npm run cli -- \
+            --provider aws \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output terraform \
+            --file /tmp/test-terraform.tf
+
+          echo "Terraform configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-terraform.tf
+
+      - name: Initialize Terraform
+        working-directory: /tmp
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+      - name: Validate Terraform Configuration
+        working-directory: /tmp
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Plan Terraform Deployment
+        working-directory: /tmp
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan \
+            -var "region=${{ env.AWS_REGION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}" \
+            -out=tfplan
+
+      - name: Apply Terraform Deployment
+        id: deploy
+        working-directory: /tmp
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+          # Extract outputs
+          VPC_ID=$(terraform output -raw vpc_id)
+          VPC_NAME=$(terraform output -raw vpc_name || echo "${{ env.VPC_NAME }}")
+
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "vpc_name=$VPC_NAME" >> $GITHUB_OUTPUT
+
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+
+          echo "✅ Deployment completed successfully"
+          echo "VPC Name: $VPC_NAME"
+          echo "VPC ID: $VPC_ID"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          # Check if VPC exists
+          echo "Checking if VPC ${{ env.VPC_ID }} exists..."
+          VPC_EXISTS=$(aws ec2 describe-vpcs \
+            --vpc-ids ${{ env.VPC_ID }} \
+            --query "Vpcs[0].VpcId" \
+            --output text 2>/dev/null || echo "")
+
+          if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" == "None" ]; then
+            echo "❌ VPC not found!"
+            exit 1
+          fi
+          echo "✅ VPC exists: $VPC_EXISTS"
+
+          # Validate VPC CIDR
+          echo "Validating VPC CIDR block..."
+          VPC_CIDR_BLOCK=$(aws ec2 describe-vpcs \
+            --vpc-ids ${{ env.VPC_ID }} \
+            --query "Vpcs[0].CidrBlock" \
+            --output text)
+
+          if [ "$VPC_CIDR_BLOCK" != "${{ env.VPC_CIDR }}" ]; then
+            echo "❌ VPC CIDR mismatch! Expected: ${{ env.VPC_CIDR }}, Got: $VPC_CIDR_BLOCK"
+            exit 1
+          fi
+          echo "✅ VPC CIDR is correct: $VPC_CIDR_BLOCK"
+
+          # List and validate subnets
+          echo "Listing subnets..."
+          SUBNET_IDS=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "Subnets[*].SubnetId" \
+            --output text)
+
+          echo "Subnet IDs: $SUBNET_IDS"
+
+          SUBNET_COUNT=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "length(Subnets)" \
+            --output text)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          # Display subnet details
+          echo "Subnet details:"
+          aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "Subnets[*].{SubnetId:SubnetId, CidrBlock:CidrBlock, AvailabilityZone:AvailabilityZone, State:State}" \
+            --output table
+
+          # Check subnet states
+          FAILED_SUBNETS=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "Subnets[?State!='available'].SubnetId" \
+            --output text)
+
+          if [ -n "$FAILED_SUBNETS" ] && [ "$FAILED_SUBNETS" != "None" ]; then
+            echo "❌ Some subnets are not available: $FAILED_SUBNETS"
+            exit 1
+          fi
+
+          echo "✅ All subnets are available"
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 AWS VPC Deployment Test Report" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** Terraform" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**VPC ID:** ${{ env.VPC_ID }}" >> /tmp/test-report.md
+          echo "**VPC Name:** ${{ env.VPC_NAME }}" >> /tmp/test-report.md
+          echo "**Region:** ${{ env.AWS_REGION }}" >> /tmp/test-report.md
+          echo "**VPC CIDR:** ${{ env.VPC_CIDR }}" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
+          else
+            echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
+          fi
+
+          echo "" >> /tmp/test-report.md
+          echo "### Subnets Created:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            aws ec2 describe-subnets \
+              --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+              --query "Subnets[*].{SubnetId:SubnetId, CidrBlock:CidrBlock, AvailabilityZone:AvailabilityZone, State:State}" \
+              --output table >> /tmp/test-report.md 2>&1 || echo "Failed to list subnets" >> /tmp/test-report.md
+          else
+            echo "VPC ID not available" >> /tmp/test-report.md
+          fi
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        run: |
+          echo "🧹 Cleaning up resources..."
+
+          # Try to destroy using Terraform first
+          echo "Attempting to destroy resources using Terraform..."
+          if terraform destroy -auto-approve \
+            -var "region=${{ env.AWS_REGION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}"; then
+            echo "✅ Terraform destroy completed successfully"
+          else
+            echo "⚠️ Terraform destroy failed"
+            echo "Attempting manual cleanup of VPC resources..."
+
+            if [ -n "${{ env.VPC_ID }}" ]; then
+              # Delete subnets
+              echo "Deleting subnets..."
+              SUBNET_IDS=$(aws ec2 describe-subnets \
+                --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+                --query "Subnets[*].SubnetId" \
+                --output text)
+
+              for subnet_id in $SUBNET_IDS; do
+                echo "Deleting subnet: $subnet_id"
+                aws ec2 delete-subnet --subnet-id "$subnet_id" || true
+              done
+
+              # Delete route tables (except main)
+              echo "Deleting route tables..."
+              RT_IDS=$(aws ec2 describe-route-tables \
+                --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+                --query "RouteTables[?Associations[0].Main!=\`true\`].RouteTableId" \
+                --output text)
+
+              for rt_id in $RT_IDS; do
+                echo "Deleting route table: $rt_id"
+                aws ec2 delete-route-table --route-table-id "$rt_id" || true
+              done
+
+              # Delete internet gateways
+              echo "Deleting internet gateways..."
+              IGW_IDS=$(aws ec2 describe-internet-gateways \
+                --filters "Name=attachment.vpc-id,Values=${{ env.VPC_ID }}" \
+                --query "InternetGateways[*].InternetGatewayId" \
+                --output text)
+
+              for igw_id in $IGW_IDS; do
+                echo "Detaching and deleting internet gateway: $igw_id"
+                aws ec2 detach-internet-gateway --internet-gateway-id "$igw_id" --vpc-id "${{ env.VPC_ID }}" || true
+                aws ec2 delete-internet-gateway --internet-gateway-id "$igw_id" || true
+              done
+
+              # Delete VPC
+              echo "Deleting VPC: ${{ env.VPC_ID }}"
+              aws ec2 delete-vpc --vpc-id "${{ env.VPC_ID }}" || true
+
+              echo "✅ Manual cleanup completed"
+            else
+              echo "⚠️ VPC ID not available, skipping manual cleanup"
+            fi
+          fi
+
+          echo "✅ Cleanup completed"
