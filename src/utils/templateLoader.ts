@@ -304,11 +304,11 @@ export async function loadAWSTerraformTemplate(data: TemplateData): Promise<stri
   let subnetResources = ''
   data.subnets.forEach((subnet, index) => {
     subnetResources += `resource "aws_subnet" "subnet${index + 1}" {\n`
-    subnetResources += `  vpc_id            = aws_vpc.main.id\n`
+    subnetResources += `  vpc_id            = aws_vpc.vpc.id\n`
     subnetResources += `  cidr_block        = var.subnet${index + 1}_cidr\n`
     subnetResources += `  availability_zone = var.subnet${index + 1}_az\n\n`
     subnetResources += `  tags = {\n`
-    subnetResources += `    Name        = "\${var.prefix}-subnet${index + 1}"\n`
+    subnetResources += `    Name        = "\${aws_vpc.vpc.name}-subnet${index + 1}"\n`
     subnetResources += `    Environment = "Production"\n`
     subnetResources += `    ManagedBy   = "Terraform"\n`
     subnetResources += `  }\n`
