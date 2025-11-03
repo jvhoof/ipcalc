@@ -63,17 +63,17 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.9.0"
-
       - name: Configure AWS Credentials for China region audience
         uses: aws-actions/configure-aws-credentials@v5.1.0
         with:
           aws-region: eu-north-1
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           role-session-name: JVHIPCalcSession
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
 
       - name: Generate Terraform Configuration using ipcalc CLI
         id: generate-terraform
