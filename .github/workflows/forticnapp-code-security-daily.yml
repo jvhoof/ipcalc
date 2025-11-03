@@ -42,6 +42,6 @@ jobs:
 
       # Step 4: Upload the SARIF file to GitHub Code Scanning 
       - name: Upload SARIF to GitHub Code Scanning 
-        uses: github/codeql-action/upload-sarif@v2  # Use the GitHub action to upload SARIF 
+        uses: github/codeql-action/upload-sarif@v4  # Use the GitHub action to upload SARIF 
         with: 
           sarif_file: lacework-scan.sarif  # Path to the SARIF file 
