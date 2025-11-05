@@ -10,7 +10,7 @@ on:
       region:
         description: 'GCP region'
         required: false
-        default: 'us-central1'
+        default: 'eu-central1'
       vpc_cidr:
         description: 'VPC CIDR block'
         required: false
@@ -30,7 +30,7 @@ on:
 env:
   # Workflow parameters - workflow_dispatch inputs take precedence over env vars
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.GCP_RESOURCE_PREFIX || 'ipcalc-test' }}
-  GCP_REGION: ${{ github.event.inputs.region || vars.GCP_REGION || 'us-central1' }}
+  GCP_REGION: ${{ github.event.inputs.region || vars.GCP_REGION || 'eu-central1' }}
   VPC_CIDR: ${{ github.event.inputs.vpc_cidr || vars.GCP_VPC_CIDR || '172.16.1.0/24' }}
   SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.GCP_SUBNET_COUNT || '4' }}
 
