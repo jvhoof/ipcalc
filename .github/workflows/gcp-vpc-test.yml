@@ -1,0 +1,293 @@
+name: GCP VPC Deployment Test
+
+on:
+  workflow_dispatch:  # Allow manual trigger with parameters
+    inputs:
+      prefix:
+        description: 'Resource prefix for naming'
+        required: false
+        default: 'ipcalc-qa'
+      region:
+        description: 'GCP region'
+        required: false
+        default: 'eu-central1'
+      vpc_cidr:
+        description: 'VPC CIDR block'
+        required: false
+        default: '172.16.1.0/24'
+      subnet_count:
+        description: 'Number of subnets to create'
+        required: false
+        default: '4'
+  push:
+    branches:
+      - beta  # Trigger on push to beta branch
+  pull_request:
+    paths:
+      - 'src/templates/gcp/**'
+      - '.github/workflows/gcp-vpc-test.yml'
+
+env:
+  # Workflow parameters - workflow_dispatch inputs take precedence over env vars
+  RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.GCP_RESOURCE_PREFIX || 'ipcalc-test' }}
+  GCP_REGION: ${{ github.event.inputs.region || vars.GCP_REGION || 'eu-central1' }}
+  VPC_CIDR: ${{ github.event.inputs.vpc_cidr || vars.GCP_VPC_CIDR || '172.16.1.0/24' }}
+  SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.GCP_SUBNET_COUNT || '4' }}
+
+jobs:
+  deploy-with-terraform:
+    name: Deploy and Test with Terraform
+    runs-on: ubuntu-latest
+
+    # Add these permissions for Workload Identity Federation
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+          VPC_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-vpc"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Generate Terraform Configuration using ipcalc CLI
+        id: generate-terraform
+        run: |
+          echo "Generating Terraform configuration using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: gcp"
+          echo "  CIDR: ${{ env.VPC_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Region: ${{ env.GCP_REGION }}"
+          echo "  Prefix: ${{ env.JOB_PREFIX }}"
+
+          # Generate Terraform configuration using ipcalc CLI
+          npm run cli -- \
+            --provider gcp \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output terraform \
+            --file /tmp/test-terraform.tf
+
+          echo "Terraform configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-terraform.tf
+
+      - name: Initialize Terraform
+        working-directory: /tmp
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+      - name: Validate Terraform Configuration
+        working-directory: /tmp
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Plan Terraform Deployment
+        working-directory: /tmp
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan \
+            -var "project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}" \
+            -out=tfplan
+
+      - name: Apply Terraform Deployment
+        id: deploy
+        working-directory: /tmp
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+          # Extract outputs
+          VPC_NAME=$(terraform output -raw vpc_name)
+          VPC_ID=$(terraform output -raw vpc_id)
+          VPC_SELF_LINK=$(terraform output -raw vpc_self_link)
+
+          echo "vpc_name=$VPC_NAME" >> $GITHUB_OUTPUT
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "vpc_self_link=$VPC_SELF_LINK" >> $GITHUB_OUTPUT
+
+          echo "VPC_SELF_LINK=$VPC_SELF_LINK" >> $GITHUB_ENV
+
+          echo "✅ Deployment completed successfully"
+          echo "VPC Name: $VPC_NAME"
+          echo "VPC ID: $VPC_ID"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          # Check if VPC exists
+          echo "Checking if VPC ${{ env.VPC_NAME }} exists..."
+          VPC_EXISTS=$(gcloud compute networks describe "${{ env.VPC_NAME }}" \
+            --format="value(name)" 2>/dev/null || echo "")
+
+          if [ -z "$VPC_EXISTS" ]; then
+            echo "❌ VPC not found!"
+            exit 1
+          fi
+          echo "✅ VPC exists: $VPC_EXISTS"
+
+          # Validate VPC configuration
+          echo "Validating VPC configuration..."
+          VPC_MODE=$(gcloud compute networks describe "${{ env.VPC_NAME }}" \
+            --format="value(autoCreateSubnetworks)")
+
+          if [ "$VPC_MODE" != "False" ]; then
+            echo "❌ VPC should be in custom subnet mode!"
+            exit 1
+          fi
+          echo "✅ VPC is in custom subnet mode"
+
+          # List and validate subnets
+          echo "Listing subnets..."
+          SUBNET_LIST=$(gcloud compute networks subnets list \
+            --network="${{ env.VPC_NAME }}" \
+            --format="table(name,region,ipCidrRange)")
+
+          echo "$SUBNET_LIST"
+
+          SUBNET_COUNT=$(gcloud compute networks subnets list \
+            --network="${{ env.VPC_NAME }}" \
+            --format="value(name)" | wc -l)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          # Display detailed subnet information
+          echo "Subnet details:"
+          gcloud compute networks subnets list \
+            --network="${{ env.VPC_NAME }}" \
+            --format="table(name,region,ipCidrRange,privateIpGoogleAccess)"
+
+          echo "✅ All subnets are available"
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 GCP VPC Deployment Test Report" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** Terraform" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**VPC Name:** ${{ env.VPC_NAME }}" >> /tmp/test-report.md
+          echo "**Project ID:** ${{ secrets.GCP_PROJECT_ID }}" >> /tmp/test-report.md
+          echo "**Region:** ${{ env.GCP_REGION }}" >> /tmp/test-report.md
+          echo "**VPC CIDR:** ${{ env.VPC_CIDR }}" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
+          else
+            echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
+          fi
+
+          echo "" >> /tmp/test-report.md
+          echo "### Subnets Created:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          if [ -n "${{ env.VPC_NAME }}" ]; then
+            gcloud compute networks subnets list \
+              --network="${{ env.VPC_NAME }}" \
+              --format="table(name,region,ipCidrRange)" >> /tmp/test-report.md 2>&1 || echo "Failed to list subnets" >> /tmp/test-report.md
+          else
+            echo "VPC Name not available" >> /tmp/test-report.md
+          fi
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        run: |
+          echo "🧹 Cleaning up resources..."
+
+          # Try to destroy using Terraform first
+          echo "Attempting to destroy resources using Terraform..."
+          if terraform destroy -auto-approve \
+            -var "project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}"; then
+            echo "✅ Terraform destroy completed successfully"
+          else
+            echo "⚠️ Terraform destroy failed"
+            echo "Attempting manual cleanup of VPC resources..."
+
+            if [ -n "${{ env.VPC_NAME }}" ]; then
+              # Delete firewall rules first (dependencies)
+              echo "Deleting firewall rules..."
+              FIREWALL_RULES=$(gcloud compute firewall-rules list \
+                --filter="network:${{ env.VPC_NAME }}" \
+                --format="value(name)")
+
+              for fw_rule in $FIREWALL_RULES; do
+                echo "Deleting firewall rule: $fw_rule"
+                gcloud compute firewall-rules delete "$fw_rule" --quiet || true
+              done
+
+              # Delete subnets
+              echo "Deleting subnets..."
+              SUBNETS=$(gcloud compute networks subnets list \
+                --network="${{ env.VPC_NAME }}" \
+                --format="value(name,region)")
+
+              echo "$SUBNETS" | while read -r subnet region; do
+                if [ -n "$subnet" ] && [ -n "$region" ]; then
+                  echo "Deleting subnet: $subnet in region $region"
+                  gcloud compute networks subnets delete "$subnet" \
+                    --region="$region" --quiet || true
+                fi
+              done
+
+              # Delete VPC
+              echo "Deleting VPC: ${{ env.VPC_NAME }}"
+              gcloud compute networks delete "${{ env.VPC_NAME }}" --quiet || true
+
+              echo "✅ Manual cleanup completed"
+            else
+              echo "⚠️ VPC Name not available, skipping manual cleanup"
+            fi
+          fi
+
+          echo "✅ Cleanup completed"
