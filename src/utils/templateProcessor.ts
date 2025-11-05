@@ -1,0 +1,677 @@
+/**
+ * Core Template Processor
+ * Contains all shared template generation logic
+ * Platform-agnostic - no I/O dependencies
+ */
+
+export interface Subnet {
+  network: string
+  cidr: string
+  mask: string
+  totalIPs: number
+  usableIPs: number
+  reserved: string[]
+  usableRange: string
+  availabilityZone?: string
+  region?: string
+  availabilityDomain?: string
+  zone?: string
+}
+
+export interface TemplateData {
+  vnetCidr: string
+  subnets: Subnet[]
+}
+
+// ============================================
+// Azure Template Processors
+// ============================================
+
+/**
+ * Process Azure CLI template
+ */
+export function processAzureCLITemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `SUBNET${index + 1}_NAME="\${PREFIX}-subnet${index + 1}"\n`
+    subnetVariables += `SUBNET${index + 1}_CIDR="${subnet.cidr}"\n`
+  })
+
+  // Generate subnet creation commands
+  let subnetCreation = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetCreation += `echo "Creating Subnet ${index + 1}: \${SUBNET${index + 1}_NAME}"\n`
+    subnetCreation += `az network vnet subnet create \\\n`
+    subnetCreation += `  --resource-group "\${RESOURCE_GROUP}" \\\n`
+    subnetCreation += `  --vnet-name "\${VNET_NAME}" \\\n`
+    subnetCreation += `  --name "\${SUBNET${index + 1}_NAME}" \\\n`
+    subnetCreation += `  --address-prefix "\${SUBNET${index + 1}_CIDR}"\n\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vnetCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetCreation}}', subnetCreation)
+
+  return content
+}
+
+/**
+ * Process Azure Terraform template
+ */
+export function processAzureTerraformTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `\nvariable "subnet${index + 1}_cidr" {\n`
+    subnetVariables += `  description = "CIDR block for Subnet ${index + 1}"\n`
+    subnetVariables += `  type        = string\n`
+    subnetVariables += `  default     = "${subnet.cidr}"\n`
+    subnetVariables += `}\n`
+  })
+
+  // Generate subnet resources
+  let subnetResources = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetResources += `resource "azurerm_subnet" "subnet${index + 1}" {\n`
+    subnetResources += `  name                 = "\${var.prefix}-subnet${index + 1}"\n`
+    subnetResources += `  resource_group_name  = azurerm_resource_group.main.name\n`
+    subnetResources += `  virtual_network_name = azurerm_virtual_network.main.name\n`
+    subnetResources += `  address_prefixes     = [var.subnet${index + 1}_cidr]\n`
+    subnetResources += `}\n\n`
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += `\noutput "subnet${index + 1}_id" {\n`
+    subnetOutputs += `  description = "ID of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = azurerm_subnet.subnet${index + 1}.id\n`
+    subnetOutputs += `}\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vnetCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetResources}}', subnetResources)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+/**
+ * Process Azure Bicep template
+ */
+export function processAzureBicepTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet parameters
+  let subnetParameters = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetParameters += `\n@description('CIDR block for Subnet ${index + 1}')\n`
+    subnetParameters += `param subnet${index + 1}Cidr string = '${subnet.cidr}'\n`
+  })
+
+  // Generate subnet definitions
+  let subnetDefinitions = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetDefinitions += `      {\n`
+    subnetDefinitions += `        name: '\${prefix}-subnet${index + 1}'\n`
+    subnetDefinitions += `        properties: {\n`
+    subnetDefinitions += `          addressPrefix: subnet${index + 1}Cidr\n`
+    subnetDefinitions += `        }\n`
+    subnetDefinitions += `      }\n`
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += `\n@description('ID of Subnet ${index + 1}')\n`
+    subnetOutputs += `output subnet${index + 1}Id string = vnet.properties.subnets[${index}].id\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vnetCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetParameters}}', subnetParameters)
+  content = content.replace('{{subnetDefinitions}}', subnetDefinitions)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+/**
+ * Process Azure ARM template
+ */
+export function processAzureARMTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet parameters
+  let subnetParameters = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetParameters += `,\n    "subnet${index + 1}Cidr": {\n`
+    subnetParameters += `      "type": "string",\n`
+    subnetParameters += `      "defaultValue": "${subnet.cidr}",\n`
+    subnetParameters += `      "metadata": {\n`
+    subnetParameters += `        "description": "CIDR block for Subnet ${index + 1}"\n`
+    subnetParameters += `      }\n`
+    subnetParameters += `    }`
+  })
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `,\n    "subnet${index + 1}Name": "[concat(parameters('prefix'), '-subnet${index + 1}')]"`
+  })
+
+  // Generate subnet definitions
+  let subnetDefinitions = ''
+  data.subnets.forEach((subnet, index) => {
+    if (index > 0) subnetDefinitions += ','
+    subnetDefinitions += `\n          {\n`
+    subnetDefinitions += `            "name": "[variables('subnet${index + 1}Name')]",\n`
+    subnetDefinitions += `            "properties": {\n`
+    subnetDefinitions += `              "addressPrefix": "[parameters('subnet${index + 1}Cidr')]"\n`
+    subnetDefinitions += `            }\n`
+    subnetDefinitions += `          }`
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += `,\n    "subnet${index + 1}Id": {\n`
+    subnetOutputs += `      "type": "string",\n`
+    subnetOutputs += `      "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnet${index + 1}Name'))]",\n`
+    subnetOutputs += `      "metadata": {\n`
+    subnetOutputs += `        "description": "Resource ID of Subnet ${index + 1}"\n`
+    subnetOutputs += `      }\n`
+    subnetOutputs += `    }`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vnetCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetParameters}}', subnetParameters)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetDefinitions}}', subnetDefinitions)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+/**
+ * Process Azure PowerShell template
+ */
+export function processAzurePowerShellTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `$Subnet${index + 1}Name = "\${Prefix}-subnet${index + 1}"\n`
+    subnetVariables += `$Subnet${index + 1}Cidr = "${subnet.cidr}"\n`
+  })
+
+  // Generate subnet configurations
+  let subnetConfigurations = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetConfigurations += `$SubnetConfig${index + 1} = New-AzVirtualNetworkSubnetConfig \`\n`
+    subnetConfigurations += `    -Name $Subnet${index + 1}Name \`\n`
+    subnetConfigurations += `    -AddressPrefix $Subnet${index + 1}Cidr\n`
+    subnetConfigurations += `Write-Host "  - Subnet ${index + 1}: $Subnet${index + 1}Name ($Subnet${index + 1}Cidr)" -ForegroundColor Gray\n\n`
+  })
+
+  // Generate subnet config list
+  const subnetConfigList = data.subnets.map((_, index) => `$SubnetConfig${index + 1}`).join(', ')
+
+  // Replace placeholders
+  content = content.replace('{{vnetCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetConfigurations}}', subnetConfigurations)
+  content = content.replace('{{subnetConfigList}}', subnetConfigList)
+
+  return content
+}
+
+// ============================================
+// AWS Template Processors
+// ============================================
+
+/**
+ * Process AWS CLI template
+ */
+export function processAWSCLITemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `SUBNET${index + 1}_CIDR="${subnet.cidr}"\n`
+  })
+
+  // Generate subnet creation commands
+  let subnetCreation = ''
+  data.subnets.forEach((subnet, index) => {
+    const azIndex = index
+    subnetCreation += `# Determine AZ for Subnet ${index + 1}\n`
+    subnetCreation += `SUBNET${index + 1}_AZ="\${AVAILABILITY_ZONES[${azIndex} % \${AZ_COUNT}]}"\n`
+    subnetCreation += `echo "Creating Subnet ${index + 1} in \${SUBNET${index + 1}_AZ}..."\n`
+    subnetCreation += `SUBNET${index + 1}_ID=$(aws ec2 create-subnet \\\n`
+    subnetCreation += `  --vpc-id "\${VPC_ID}" \\\n`
+    subnetCreation += `  --cidr-block "\${SUBNET${index + 1}_CIDR}" \\\n`
+    subnetCreation += `  --availability-zone "\${SUBNET${index + 1}_AZ}" \\\n`
+    subnetCreation += `  --region "\${REGION}" \\\n`
+    subnetCreation += `  --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=\${PREFIX}-subnet${index + 1}}]" \\\n`
+    subnetCreation += `  --query 'Subnet.SubnetId' \\\n`
+    subnetCreation += `  --output text)\n\n`
+    subnetCreation += `echo "Subnet ${index + 1} ID: \${SUBNET${index + 1}_ID}"\n\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetCreation}}', subnetCreation)
+
+  return content
+}
+
+/**
+ * Process AWS Terraform template
+ */
+export function processAWSTerraformTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `\nvariable "subnet${index + 1}_cidr" {\n`
+    subnetVariables += `  description = "CIDR block for Subnet ${index + 1}"\n`
+    subnetVariables += `  type        = string\n`
+    subnetVariables += `  default     = "${subnet.cidr}"\n`
+    subnetVariables += `}\n`
+  })
+
+  // Generate subnet resources
+  let subnetResources = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetResources += `resource "aws_subnet" "subnet${index + 1}" {\n`
+    subnetResources += `  vpc_id            = aws_vpc.vpc.id\n`
+    subnetResources += `  cidr_block        = var.subnet${index + 1}_cidr\n`
+    subnetResources += `  availability_zone = data.aws_availability_zones.available.names[${index} % length(data.aws_availability_zones.available.names)]\n\n`
+    subnetResources += `  tags = {\n`
+    subnetResources += `    Name        = "\${lookup(aws_vpc.vpc.tags, "Name")}-subnet${index + 1}"\n`
+    subnetResources += `    Environment = "Production"\n`
+    subnetResources += `    ManagedBy   = "Terraform"\n`
+    subnetResources += `  }\n`
+    subnetResources += `}\n\n`
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += `\noutput "subnet${index + 1}_id" {\n`
+    subnetOutputs += `  description = "ID of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = aws_subnet.subnet${index + 1}.id\n`
+    subnetOutputs += `}\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetResources}}', subnetResources)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+/**
+ * Process AWS CloudFormation template
+ */
+export function processAWSCloudFormationTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet parameters
+  let subnetParameters = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetParameters += `\n  Subnet${index + 1}Cidr:\n`
+    subnetParameters += `    Type: String\n`
+    subnetParameters += `    Default: ${subnet.cidr}\n`
+    subnetParameters += `    Description: CIDR block for Subnet ${index + 1}\n`
+  })
+
+  // Generate subnet resources with dynamic AZ selection
+  let subnetResources = ''
+  data.subnets.forEach((subnet, index) => {
+    const azSelectors = [
+      '!Select [0, !GetAZs ""]',
+      '!Select [1, !GetAZs ""]',
+      '!Select [2, !GetAZs ""]',
+      '!Select [3, !GetAZs ""]',
+      '!Select [4, !GetAZs ""]',
+      '!Select [5, !GetAZs ""]'
+    ]
+    const azSelector = azSelectors[index % azSelectors.length]
+
+    subnetResources += `\n  Subnet${index + 1}:\n`
+    subnetResources += `    Type: AWS::EC2::Subnet\n`
+    subnetResources += `    Properties:\n`
+    subnetResources += `      VpcId: !Ref VPC\n`
+    subnetResources += `      CidrBlock: !Ref Subnet${index + 1}Cidr\n`
+    subnetResources += `      AvailabilityZone: ${azSelector}\n`
+    subnetResources += `      Tags:\n`
+    subnetResources += `        - Key: Name\n`
+    subnetResources += `          Value: !Sub '\${Prefix}-subnet${index + 1}'\n`
+    subnetResources += `        - Key: Environment\n`
+    subnetResources += `          Value: Production\n`
+    subnetResources += `        - Key: ManagedBy\n`
+    subnetResources += `          Value: CloudFormation\n`
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += `\n  Subnet${index + 1}Id:\n`
+    subnetOutputs += `    Description: ID of Subnet ${index + 1}\n`
+    subnetOutputs += `    Value: !Ref Subnet${index + 1}\n`
+    subnetOutputs += `    Export:\n`
+    subnetOutputs += `      Name: !Sub '\${AWS::StackName}-Subnet${index + 1}Id'\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetParameters}}', subnetParameters)
+  content = content.replace('{{subnetResources}}', subnetResources)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+// ============================================
+// GCP Template Processors
+// ============================================
+
+/**
+ * Process GCP gcloud CLI template
+ */
+export function processGCPGcloudTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet creation commands
+  let subnetCreation = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetCreation += `echo "Creating Subnet ${index + 1} in ${subnet.region || 'us-central1'}..."\n`
+    subnetCreation += `gcloud compute networks subnets create "\${VPC_NAME}-subnet${index + 1}" \\\n`
+    subnetCreation += `  --network="\${VPC_NAME}" \\\n`
+    subnetCreation += `  --region="${subnet.region || 'us-central1'}" \\\n`
+    subnetCreation += `  --range="${subnet.cidr}" \\\n`
+    subnetCreation += `  --enable-private-ip-google-access\n\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{subnetCreation}}', subnetCreation)
+
+  return content
+}
+
+/**
+ * Process GCP Terraform template
+ */
+export function processGCPTerraformTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `\nvariable "subnet${index + 1}_cidr" {\n`
+    subnetVariables += `  description = "CIDR block for Subnet ${index + 1}"\n`
+    subnetVariables += `  type        = string\n`
+    subnetVariables += `  default     = "${subnet.cidr}"\n`
+    subnetVariables += `}\n`
+
+    subnetVariables += `\nvariable "subnet${index + 1}_region" {\n`
+    subnetVariables += `  description = "Region for Subnet ${index + 1}"\n`
+    subnetVariables += `  type        = string\n`
+    subnetVariables += `  default     = "${subnet.region || 'us-central1'}"\n`
+    subnetVariables += `}\n`
+  })
+
+  // Generate subnet resources
+  let subnetResources = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetResources += `resource "google_compute_subnetwork" "subnet${index + 1}" {\n`
+    subnetResources += `  name          = "\${var.vpc_name}-subnet${index + 1}"\n`
+    subnetResources += `  ip_cidr_range = var.subnet${index + 1}_cidr\n`
+    subnetResources += `  region        = var.subnet${index + 1}_region\n`
+    subnetResources += `  network       = google_compute_network.vpc.id\n`
+    subnetResources += `  project       = var.project_id\n\n`
+    subnetResources += `  private_ip_google_access = true\n\n`
+    subnetResources += `  log_config {\n`
+    subnetResources += `    aggregation_interval = "INTERVAL_10_MIN"\n`
+    subnetResources += `    flow_sampling        = 0.5\n`
+    subnetResources += `    metadata             = "INCLUDE_ALL_METADATA"\n`
+    subnetResources += `  }\n`
+    subnetResources += `}\n\n`
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += `\noutput "subnet${index + 1}_name" {\n`
+    subnetOutputs += `  description = "Name of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = google_compute_subnetwork.subnet${index + 1}.name\n`
+    subnetOutputs += `}\n`
+
+    subnetOutputs += `\noutput "subnet${index + 1}_id" {\n`
+    subnetOutputs += `  description = "ID of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = google_compute_subnetwork.subnet${index + 1}.id\n`
+    subnetOutputs += `}\n`
+
+    subnetOutputs += `\noutput "subnet${index + 1}_self_link" {\n`
+    subnetOutputs += `  description = "Self link of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = google_compute_subnetwork.subnet${index + 1}.self_link\n`
+    subnetOutputs += `}\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetResources}}', subnetResources)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+// ============================================
+// Oracle Cloud Template Processors
+// ============================================
+
+/**
+ * Process Oracle OCI CLI template
+ */
+export function processOracleOCITemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet creation commands
+  let subnetCreation = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetCreation += `echo "Creating Subnet ${index + 1}..."\n`
+    subnetCreation += `SUBNET${index + 1}_ID=$(oci network subnet create \\\n`
+    subnetCreation += `  --compartment-id "\${COMPARTMENT_ID}" \\\n`
+    subnetCreation += `  --vcn-id "\${VCN_ID}" \\\n`
+    subnetCreation += `  --cidr-block "${subnet.cidr}" \\\n`
+    subnetCreation += `  --display-name "\${VCN_NAME}-subnet${index + 1}" \\\n`
+    subnetCreation += `  --dns-label "subnet${index + 1}" \\\n`
+    subnetCreation += `  --route-table-id "\${RT_ID}" \\\n`
+    subnetCreation += `  --security-list-ids '["\${SL_ID}"]' \\\n`
+    subnetCreation += `  --query 'data.id' \\\n`
+    subnetCreation += `  --raw-output)\n\n`
+    subnetCreation += `echo "Subnet ${index + 1} created with ID: \${SUBNET${index + 1}_ID}"\n\n`
+  })
+
+  // Replace placeholders
+  content = content.replace(/{{vcnCidr}}/g, data.vnetCidr)
+  content = content.replace('{{subnetCreation}}', subnetCreation)
+
+  return content
+}
+
+/**
+ * Process Oracle Terraform template
+ */
+export function processOracleTerraformTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate subnet variables
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += `\nvariable "subnet${index + 1}_cidr" {\n`
+    subnetVariables += `  description = "CIDR block for Subnet ${index + 1}"\n`
+    subnetVariables += `  type        = string\n`
+    subnetVariables += `  default     = "${subnet.cidr}"\n`
+    subnetVariables += `}\n`
+  })
+
+  // Generate subnet resources
+  let subnetResources = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetResources += `resource "oci_core_subnet" "subnet${index + 1}" {\n`
+    subnetResources += `  compartment_id             = var.compartment_id\n`
+    subnetResources += `  vcn_id                     = oci_core_vcn.vcn.id\n`
+    subnetResources += `  cidr_block                 = var.subnet${index + 1}_cidr\n`
+    subnetResources += `  display_name               = "\${var.vcn_name}-subnet${index + 1}"\n`
+    subnetResources += `  dns_label                  = "subnet${index + 1}"\n`
+    subnetResources += `  route_table_id             = oci_core_route_table.rt.id\n`
+    subnetResources += `  security_list_ids          = [oci_core_security_list.sl.id]\n`
+    subnetResources += `  prohibit_public_ip_on_vnic = false\n\n`
+    subnetResources += `  freeform_tags = {\n`
+    subnetResources += `    "Environment" = "Production"\n`
+    subnetResources += `    "ManagedBy"   = "Terraform"\n`
+    subnetResources += `  }\n`
+    subnetResources += `}\n\n`
+  })
+
+  // Generate subnet outputs
+  let subnetOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetOutputs += `\noutput "subnet${index + 1}_id" {\n`
+    subnetOutputs += `  description = "OCID of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = oci_core_subnet.subnet${index + 1}.id\n`
+    subnetOutputs += `}\n`
+
+    subnetOutputs += `\noutput "subnet${index + 1}_name" {\n`
+    subnetOutputs += `  description = "Name of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = oci_core_subnet.subnet${index + 1}.display_name\n`
+    subnetOutputs += `}\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vcnCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetResources}}', subnetResources)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
+
+  return content
+}
+
+// ============================================
+// AliCloud Template Processors
+// ============================================
+
+/**
+ * Process AliCloud Aliyun CLI template
+ */
+export function processAliCloudAliyunTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate vSwitch creation commands
+  let vSwitchCreation = ''
+  data.subnets.forEach((subnet, index) => {
+    vSwitchCreation += `echo "Creating vSwitch ${index + 1} in ${subnet.zone || 'cn-hangzhou-a'}..."\n`
+    vSwitchCreation += `VSWITCH${index + 1}_ID=$(aliyun vpc CreateVSwitch \\\n`
+    vSwitchCreation += `  --RegionId "\${REGION}" \\\n`
+    vSwitchCreation += `  --VpcId "\${VPC_ID}" \\\n`
+    vSwitchCreation += `  --ZoneId "${subnet.zone || 'cn-hangzhou-a'}" \\\n`
+    vSwitchCreation += `  --CidrBlock "${subnet.cidr}" \\\n`
+    vSwitchCreation += `  --VSwitchName "\${VPC_NAME}-vswitch${index + 1}" \\\n`
+    vSwitchCreation += `  --Description "vSwitch ${index + 1} for ${subnet.zone || 'cn-hangzhou-a'}" \\\n`
+    vSwitchCreation += `  --output cols=VSwitchId rows=VSwitchId \\\n`
+    vSwitchCreation += `  | tail -n 1 | tr -d ' ')\n\n`
+    vSwitchCreation += `echo "vSwitch ${index + 1} created with ID: \${VSWITCH${index + 1}_ID}"\n`
+    vSwitchCreation += `sleep 2\n\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{vSwitchCreation}}', vSwitchCreation)
+
+  return content
+}
+
+/**
+ * Process AliCloud Terraform template
+ */
+export function processAliCloudTerraformTemplate(templateContent: string, data: TemplateData): string {
+  let content = templateContent
+
+  // Generate vSwitch variables
+  let vSwitchVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    vSwitchVariables += `\nvariable "vswitch${index + 1}_cidr" {\n`
+    vSwitchVariables += `  description = "CIDR block for vSwitch ${index + 1}"\n`
+    vSwitchVariables += `  type        = string\n`
+    vSwitchVariables += `  default     = "${subnet.cidr}"\n`
+    vSwitchVariables += `}\n`
+
+    vSwitchVariables += `\nvariable "vswitch${index + 1}_zone" {\n`
+    vSwitchVariables += `  description = "Availability Zone for vSwitch ${index + 1}"\n`
+    vSwitchVariables += `  type        = string\n`
+    vSwitchVariables += `  default     = "${subnet.zone || 'cn-hangzhou-a'}"\n`
+    vSwitchVariables += `}\n`
+  })
+
+  // Generate vSwitch resources
+  let vSwitchResources = ''
+  data.subnets.forEach((subnet, index) => {
+    vSwitchResources += `resource "alicloud_vswitch" "vswitch${index + 1}" {\n`
+    vSwitchResources += `  vpc_id       = alicloud_vpc.vpc.id\n`
+    vSwitchResources += `  cidr_block   = var.vswitch${index + 1}_cidr\n`
+    vSwitchResources += `  zone_id      = var.vswitch${index + 1}_zone\n`
+    vSwitchResources += `  vswitch_name = "\${var.vpc_name}-vswitch${index + 1}"\n`
+    vSwitchResources += `  description  = "vSwitch ${index + 1} in \${var.vswitch${index + 1}_zone}"\n\n`
+    vSwitchResources += `  tags = {\n`
+    vSwitchResources += `    Environment = "Production"\n`
+    vSwitchResources += `    ManagedBy   = "Terraform"\n`
+    vSwitchResources += `  }\n`
+    vSwitchResources += `}\n\n`
+  })
+
+  // Generate vSwitch outputs
+  let vSwitchOutputs = ''
+  data.subnets.forEach((subnet, index) => {
+    vSwitchOutputs += `\noutput "vswitch${index + 1}_id" {\n`
+    vSwitchOutputs += `  description = "ID of vSwitch ${index + 1}"\n`
+    vSwitchOutputs += `  value       = alicloud_vswitch.vswitch${index + 1}.id\n`
+    vSwitchOutputs += `}\n`
+
+    vSwitchOutputs += `\noutput "vswitch${index + 1}_name" {\n`
+    vSwitchOutputs += `  description = "Name of vSwitch ${index + 1}"\n`
+    vSwitchOutputs += `  value       = alicloud_vswitch.vswitch${index + 1}.vswitch_name\n`
+    vSwitchOutputs += `}\n`
+
+    vSwitchOutputs += `\noutput "vswitch${index + 1}_zone" {\n`
+    vSwitchOutputs += `  description = "Zone of vSwitch ${index + 1}"\n`
+    vSwitchOutputs += `  value       = alicloud_vswitch.vswitch${index + 1}.zone_id\n`
+    vSwitchOutputs += `}\n`
+  })
+
+  // Replace placeholders
+  content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{vSwitchVariables}}', vSwitchVariables)
+  content = content.replace('{{vSwitchResources}}', vSwitchResources)
+  content = content.replace('{{vSwitchOutputs}}', vSwitchOutputs)
+
+  return content
+}
