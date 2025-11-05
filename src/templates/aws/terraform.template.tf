@@ -81,4 +81,9 @@ output "vpc_id" {
   value       = aws_vpc.vpc.id
 }
 
+output "vpc_name" {
+  description = "Name of the VPC"
+  value       = aws_vpc.vpc.tags["Name"]
+}
+
 {{subnetOutputs}}
