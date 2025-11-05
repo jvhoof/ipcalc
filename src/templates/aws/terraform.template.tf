@@ -43,6 +43,14 @@ variable "vpc_cidr" {
 {{subnetVariables}}
 
 # ========================================
+# Data Sources
+# ========================================
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+# ========================================
 # VPC
 # ========================================
 

@@ -12,6 +12,19 @@ VPC_CIDR="{{vpcCidr}}"
 {{subnetVariables}}
 
 # ========================================
+# Get Available Availability Zones
+# ========================================
+echo "Retrieving available Availability Zones for region ${REGION}..."
+mapfile -t AVAILABILITY_ZONES < <(aws ec2 describe-availability-zones \
+  --region "${REGION}" \
+  --filters "Name=state,Values=available" \
+  --query 'AvailabilityZones[*].ZoneName' \
+  --output text | tr '\t' '\n')
+
+AZ_COUNT=${#AVAILABILITY_ZONES[@]}
+echo "Found ${AZ_COUNT} availability zones: ${AVAILABILITY_ZONES[*]}"
+
+# ========================================
 # Create VPC
 # ========================================
 echo "Creating VPC..."

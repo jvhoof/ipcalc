@@ -251,12 +251,14 @@ export async function loadAWSCLITemplate(data: TemplateData): Promise<string> {
   let subnetVariables = ''
   data.subnets.forEach((subnet, index) => {
     subnetVariables += `SUBNET${index + 1}_CIDR="${subnet.cidr}"\n`
-    subnetVariables += `SUBNET${index + 1}_AZ="${subnet.availabilityZone || 'us-east-1a'}"\n`
   })
 
   // Generate subnet creation commands
   let subnetCreation = ''
   data.subnets.forEach((subnet, index) => {
+    const azIndex = index
+    subnetCreation += `# Determine AZ for Subnet ${index + 1}\n`
+    subnetCreation += `SUBNET${index + 1}_AZ="\${AVAILABILITY_ZONES[${azIndex} % \${AZ_COUNT}]}"\n`
     subnetCreation += `echo "Creating Subnet ${index + 1} in \${SUBNET${index + 1}_AZ}..."\n`
     subnetCreation += `SUBNET${index + 1}_ID=$(aws ec2 create-subnet \\\n`
     subnetCreation += `  --vpc-id "\${VPC_ID}" \\\n`
@@ -292,12 +294,6 @@ export async function loadAWSTerraformTemplate(data: TemplateData): Promise<stri
     subnetVariables += `  type        = string\n`
     subnetVariables += `  default     = "${subnet.cidr}"\n`
     subnetVariables += `}\n`
-
-    subnetVariables += `\nvariable "subnet${index + 1}_az" {\n`
-    subnetVariables += `  description = "Availability Zone for Subnet ${index + 1}"\n`
-    subnetVariables += `  type        = string\n`
-    subnetVariables += `  default     = "${subnet.availabilityZone || 'us-east-1a'}"\n`
-    subnetVariables += `}\n`
   })
 
   // Generate subnet resources
@@ -306,7 +302,7 @@ export async function loadAWSTerraformTemplate(data: TemplateData): Promise<stri
     subnetResources += `resource "aws_subnet" "subnet${index + 1}" {\n`
     subnetResources += `  vpc_id            = aws_vpc.vpc.id\n`
     subnetResources += `  cidr_block        = var.subnet${index + 1}_cidr\n`
-    subnetResources += `  availability_zone = var.subnet${index + 1}_az\n\n`
+    subnetResources += `  availability_zone = data.aws_availability_zones.available.names[${index} % length(data.aws_availability_zones.available.names)]\n\n`
     subnetResources += `  tags = {\n`
     subnetResources += `    Name        = "\${lookup(aws_vpc.vpc.tags, "Name")}-subnet${index + 1}"\n`
     subnetResources += `    Environment = "Production"\n`
@@ -347,22 +343,30 @@ export async function loadAWSCloudFormationTemplate(data: TemplateData): Promise
     subnetParameters += `    Type: String\n`
     subnetParameters += `    Default: ${subnet.cidr}\n`
     subnetParameters += `    Description: CIDR block for Subnet ${index + 1}\n`
-
-    subnetParameters += `\n  Subnet${index + 1}AZ:\n`
-    subnetParameters += `    Type: String\n`
-    subnetParameters += `    Default: ${subnet.availabilityZone || 'us-east-1a'}\n`
-    subnetParameters += `    Description: Availability Zone for Subnet ${index + 1}\n`
   })
 
-  // Generate subnet resources
+  // Generate subnet resources with dynamic AZ selection
+  // CloudFormation will distribute subnets across available AZs
   let subnetResources = ''
   data.subnets.forEach((subnet, index) => {
+    // Use Fn::Select with computed index to distribute across AZs
+    // We'll use a cyclic pattern: 0, 1, 2, 0, 1, 2, ... (max 6 AZs typical)
+    const azSelectors = [
+      '!Select [0, !GetAZs ""]',
+      '!Select [1, !GetAZs ""]',
+      '!Select [2, !GetAZs ""]',
+      '!Select [3, !GetAZs ""]',
+      '!Select [4, !GetAZs ""]',
+      '!Select [5, !GetAZs ""]'
+    ]
+    const azSelector = azSelectors[index % azSelectors.length]
+
     subnetResources += `\n  Subnet${index + 1}:\n`
     subnetResources += `    Type: AWS::EC2::Subnet\n`
     subnetResources += `    Properties:\n`
     subnetResources += `      VpcId: !Ref VPC\n`
     subnetResources += `      CidrBlock: !Ref Subnet${index + 1}Cidr\n`
-    subnetResources += `      AvailabilityZone: !Ref Subnet${index + 1}AZ\n`
+    subnetResources += `      AvailabilityZone: ${azSelector}\n`
     subnetResources += `      Tags:\n`
     subnetResources += `        - Key: Name\n`
     subnetResources += `          Value: !Sub '\${Prefix}-subnet${index + 1}'\n`
