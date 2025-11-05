@@ -220,20 +220,29 @@ export function loadAzurePowerShellTemplate(data: TemplateData): string {
 export function loadAWSCLITemplate(data: TemplateData): string {
   let content = loadTemplate('aws/cli.template.sh')
 
+  let subnetVariables = ''
+  data.subnets.forEach((subnet, index) => {
+    subnetVariables += 'SUBNET' + (index + 1) + '_CIDR="' + subnet.cidr + '"\n'
+  })
+
   let subnetCreation = ''
   data.subnets.forEach((subnet, index) => {
-    subnetCreation += 'echo "Creating Subnet ' + (index + 1) + ' in ' + (subnet.availabilityZone || 'us-east-1a') + '..."\n'
+    subnetCreation += '# Determine AZ for Subnet ' + (index + 1) + '\n'
+    subnetCreation += 'SUBNET' + (index + 1) + '_AZ="${AVAILABILITY_ZONES[' + index + ' % ${AZ_COUNT}]}"\n'
+    subnetCreation += 'echo "Creating Subnet ' + (index + 1) + ' in ${SUBNET' + (index + 1) + '_AZ}..."\n'
     subnetCreation += 'SUBNET' + (index + 1) + '_ID=$(aws ec2 create-subnet \\\n'
-    subnetCreation += '  --vpc-id $VPC_ID \\\n'
-    subnetCreation += '  --cidr-block "' + subnet.cidr + '" \\\n'
-    subnetCreation += '  --availability-zone "' + (subnet.availabilityZone || 'us-east-1a') + '" \\\n'
-    subnetCreation += '  --tag-specifications \'ResourceType=subnet,Tags=[{Key=Name,Value=\'$VPC_NAME\'-subnet' + (index + 1) + '}]\' \\\n'
+    subnetCreation += '  --vpc-id "${VPC_ID}" \\\n'
+    subnetCreation += '  --cidr-block "${SUBNET' + (index + 1) + '_CIDR}" \\\n'
+    subnetCreation += '  --availability-zone "${SUBNET' + (index + 1) + '_AZ}" \\\n'
+    subnetCreation += '  --region "${REGION}" \\\n'
+    subnetCreation += '  --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=${PREFIX}-subnet' + (index + 1) + '}]" \\\n'
     subnetCreation += '  --query \'Subnet.SubnetId\' \\\n'
     subnetCreation += '  --output text)\n\n'
-    subnetCreation += 'echo "Subnet ' + (index + 1) + ' created with ID: $SUBNET' + (index + 1) + '_ID"\n\n'
+    subnetCreation += 'echo "Subnet ' + (index + 1) + ' ID: ${SUBNET' + (index + 1) + '_ID}"\n\n'
   })
 
   content = content.replace('{{vpcCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetCreation}}', subnetCreation)
 
   return content
@@ -253,16 +262,10 @@ export function loadAWSTerraformTemplate(data: TemplateData): string {
     subnetVariables += '  default     = "' + subnet.cidr + '"\n'
     subnetVariables += '}\n'
 
-    subnetVariables += '\nvariable "subnet' + (index + 1) + '_az" {\n'
-    subnetVariables += '  description = "Availability Zone for Subnet ' + (index + 1) + '"\n'
-    subnetVariables += '  type        = string\n'
-    subnetVariables += '  default     = "' + (subnet.availabilityZone || 'us-east-1a') + '"\n'
-    subnetVariables += '}\n'
-
     subnetResources += 'resource "aws_subnet" "subnet' + (index + 1) + '" {\n'
     subnetResources += '  vpc_id            = aws_vpc.vpc.id\n'
     subnetResources += '  cidr_block        = var.subnet' + (index + 1) + '_cidr\n'
-    subnetResources += '  availability_zone = var.subnet' + (index + 1) + '_az\n\n'
+    subnetResources += '  availability_zone = data.aws_availability_zones.available.names[' + index + ' % length(data.aws_availability_zones.available.names)]\n\n'
     subnetResources += '  tags = {\n'
     subnetResources += `    Name        = "\${lookup(aws_vpc.vpc.tags, "Name")}-subnet${index + 1}"\n`
     subnetResources += '    Environment = "Production"\n'
@@ -292,31 +295,38 @@ export function loadAWSCloudFormationTemplate(data: TemplateData): string {
   let subnetOutputs = ''
 
   data.subnets.forEach((subnet, index) => {
-    subnetParameters += '  Subnet' + (index + 1) + 'CIDR:\n'
+    subnetParameters += '\n  Subnet' + (index + 1) + 'Cidr:\n'
     subnetParameters += '    Type: String\n'
-    subnetParameters += '    Default: \'' + subnet.cidr + '\'\n'
+    subnetParameters += '    Default: ' + subnet.cidr + '\n'
     subnetParameters += '    Description: CIDR block for Subnet ' + (index + 1) + '\n'
-    subnetParameters += '  Subnet' + (index + 1) + 'AZ:\n'
-    subnetParameters += '    Type: AWS::EC2::AvailabilityZone::Name\n'
-    subnetParameters += '    Default: \'' + (subnet.availabilityZone || 'us-east-1a') + '\'\n'
-    subnetParameters += '    Description: Availability Zone for Subnet ' + (index + 1) + '\n'
 
-    subnetResources += '  Subnet' + (index + 1) + ':\n'
+    // Use Fn::Select with computed index to distribute across AZs
+    // CloudFormation will use modulo pattern: 0, 1, 2, 0, 1, 2, ... (max 6 AZs typical)
+    const azSelectors = [
+      '!Select [0, !GetAZs ""]',
+      '!Select [1, !GetAZs ""]',
+      '!Select [2, !GetAZs ""]',
+      '!Select [3, !GetAZs ""]',
+      '!Select [4, !GetAZs ""]',
+      '!Select [5, !GetAZs ""]'
+    ]
+    const azSelector = azSelectors[index % azSelectors.length]
+
+    subnetResources += '\n  Subnet' + (index + 1) + ':\n'
     subnetResources += '    Type: AWS::EC2::Subnet\n'
     subnetResources += '    Properties:\n'
     subnetResources += '      VpcId: !Ref VPC\n'
-    subnetResources += '      CidrBlock: !Ref Subnet' + (index + 1) + 'CIDR\n'
-    subnetResources += '      AvailabilityZone: !Ref Subnet' + (index + 1) + 'AZ\n'
-    subnetResources += '      MapPublicIpOnLaunch: true\n'
+    subnetResources += '      CidrBlock: !Ref Subnet' + (index + 1) + 'Cidr\n'
+    subnetResources += '      AvailabilityZone: ' + azSelector + '\n'
     subnetResources += '      Tags:\n'
     subnetResources += '        - Key: Name\n'
-    subnetResources += '          Value: !Sub \'${VPCName}-subnet' + (index + 1) + '\'\n'
+    subnetResources += '          Value: !Sub \'${Prefix}-subnet' + (index + 1) + '\'\n'
     subnetResources += '        - Key: Environment\n'
     subnetResources += '          Value: Production\n'
     subnetResources += '        - Key: ManagedBy\n'
     subnetResources += '          Value: CloudFormation\n'
 
-    subnetOutputs += '  Subnet' + (index + 1) + 'Id:\n'
+    subnetOutputs += '\n  Subnet' + (index + 1) + 'Id:\n'
     subnetOutputs += '    Description: ID of Subnet ' + (index + 1) + '\n'
     subnetOutputs += '    Value: !Ref Subnet' + (index + 1) + '\n'
     subnetOutputs += '    Export:\n'
