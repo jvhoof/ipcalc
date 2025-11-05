@@ -46,7 +46,7 @@ variable "vpc_cidr" {
 # VPC
 # ========================================
 
-resource "aws_vpc" "main" {
+resource "aws_vpc" "vpc" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
@@ -70,7 +70,7 @@ resource "aws_vpc" "main" {
 
 output "vpc_id" {
   description = "ID of the VPC"
-  value       = aws_vpc.main.id
+  value       = aws_vpc.vpc.id
 }
 
 {{subnetOutputs}}

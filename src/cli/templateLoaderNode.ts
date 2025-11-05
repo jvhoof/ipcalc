@@ -152,33 +152,35 @@ export function loadAzureARMTemplate(data: TemplateData): string {
   data.subnets.forEach((subnet, index) => {
     const comma = index < data.subnets.length - 1 ? ',' : ''
 
-    subnetParameters += '    "subnet' + (index + 1) + 'Cidr": {\n'
+    subnetParameters += ',\n    "subnet' + (index + 1) + 'Cidr": {\n'
     subnetParameters += '      "type": "string",\n'
     subnetParameters += '      "defaultValue": "' + subnet.cidr + '",\n'
     subnetParameters += '      "metadata": {\n'
     subnetParameters += '        "description": "CIDR block for Subnet ' + (index + 1) + '"\n'
     subnetParameters += '      }\n'
-    subnetParameters += '    }' + comma + '\n'
+    subnetParameters += '    }'
 
-    subnetVariables += '    "subnet' + (index + 1) + 'Name": "[concat(parameters(\'prefix\'), \'-subnet' + (index + 1) + '\')]"' + comma + '\n'
+    subnetVariables += ',\n    "subnet' + (index + 1) + 'Name": "[concat(parameters(\'prefix\'), \'-subnet' + (index + 1) + '\')]"'
 
-    subnetDefinitions += '          {\n'
+    if (index > 0) subnetDefinitions += ','
+    subnetDefinitions += '\n          {\n'
     subnetDefinitions += '            "name": "[variables(\'subnet' + (index + 1) + 'Name\')]",\n'
     subnetDefinitions += '            "properties": {\n'
     subnetDefinitions += '              "addressPrefix": "[parameters(\'subnet' + (index + 1) + 'Cidr\')]"\n'
     subnetDefinitions += '            }\n'
-    subnetDefinitions += '          }' + comma + '\n'
+    subnetDefinitions += '          }'
 
-    subnetOutputs += '    "subnet' + (index + 1) + 'Id": {\n'
+    subnetOutputs += ',\n    "subnet' + (index + 1) + 'Id": {\n'
     subnetOutputs += '      "type": "string",\n'
     subnetOutputs += '      "value": "[resourceId(\'Microsoft.Network/virtualNetworks/subnets\', variables(\'vnetName\'), variables(\'subnet' + (index + 1) + 'Name\'))]"\n'
-    subnetOutputs += '    }' + comma + '\n'
+    subnetOutputs += '    }'
   })
 
-  content = content.replace('"{{subnetParameters}}"', subnetParameters)
-  content = content.replace('"{{subnetVariables}}"', subnetVariables)
-  content = content.replace('"{{subnetDefinitions}}"', subnetDefinitions)
-  content = content.replace('"{{subnetOutputs}}"', subnetOutputs)
+  content = content.replace('{{vnetCidr}}', data.vnetCidr)
+  content = content.replace('{{subnetParameters}}', subnetParameters)
+  content = content.replace('{{subnetVariables}}', subnetVariables)
+  content = content.replace('{{subnetDefinitions}}', subnetDefinitions)
+  content = content.replace('{{subnetOutputs}}', subnetOutputs)
 
   return content
 }
@@ -262,7 +264,7 @@ export function loadAWSTerraformTemplate(data: TemplateData): string {
     subnetResources += '  cidr_block        = var.subnet' + (index + 1) + '_cidr\n'
     subnetResources += '  availability_zone = var.subnet' + (index + 1) + '_az\n\n'
     subnetResources += '  tags = {\n'
-    subnetResources += '    Name        = "${var.vpc_name}-subnet' + (index + 1) + '"\n'
+    subnetResources += `    Name        = "\${lookup(aws_vpc.vpc.tags, "Name")}-subnet${index + 1}"\n`
     subnetResources += '    Environment = "Production"\n'
     subnetResources += '    ManagedBy   = "Terraform"\n'
     subnetResources += '  }\n'

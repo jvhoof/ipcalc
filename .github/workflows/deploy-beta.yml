@@ -1,4 +1,4 @@
-name: Deploy Vue Application
+name: "[BETA] Deploy Vue Application"
 
 on:
   push:
