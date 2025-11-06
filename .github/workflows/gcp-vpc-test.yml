@@ -1,4 +1,4 @@
-name: GCP VPC Deployment Test
+name: [Network] GCP VPC Deployment Test
 
 on:
   workflow_dispatch:  # Allow manual trigger with parameters
