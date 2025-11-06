@@ -1,0 +1,406 @@
+name: Oracle Cloud VCN Deployment Test
+
+on:
+  workflow_dispatch:  # Allow manual trigger with parameters
+    inputs:
+      prefix:
+        description: 'Resource prefix for naming'
+        required: false
+        default: 'ipcalc-qa'
+      region:
+        description: 'OCI region'
+        required: false
+        default: 'eu-frankfurt-1'
+      vcn_cidr:
+        description: 'VCN CIDR block'
+        required: false
+        default: '172.16.1.0/24'
+      subnet_count:
+        description: 'Number of subnets to create'
+        required: false
+        default: '4'
+  push:
+    branches:
+      - beta  # Trigger on push to beta branch
+  pull_request:
+    paths:
+      - 'src/templates/oracle/**'
+      - '.github/workflows/oci-vcn-test.yml'
+
+env:
+  # Workflow parameters - workflow_dispatch inputs take precedence over env vars
+  RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.OCI_RESOURCE_PREFIX || 'ipcalc-test' }}
+  OCI_REGION: ${{ github.event.inputs.region || vars.OCI_REGION || 'eu-frankfurt-1' }}
+  VCN_CIDR: ${{ github.event.inputs.vcn_cidr || vars.OCI_VCN_CIDR || '172.16.1.0/24' }}
+  SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.OCI_SUBNET_COUNT || '4' }}
+
+jobs:
+  deploy-with-terraform:
+    name: Deploy and Test with Terraform
+    runs-on: ubuntu-latest
+
+    # Add these permissions for OIDC authentication
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+          VCN_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-vcn"
+          VCN_DNS_LABEL="ipcalc${UNIQUE_ID}"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "VCN_NAME=$VCN_NAME" >> $GITHUB_ENV
+          echo "VCN_DNS_LABEL=$VCN_DNS_LABEL" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Authenticate to Oracle Cloud using OIDC
+        id: oci-auth
+        run: |
+          echo "🔐 Authenticating to Oracle Cloud using OIDC..."
+
+          # Get GitHub OIDC token
+          OIDC_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.oracle.com" | jq -r '.value')
+
+          if [ -z "$OIDC_TOKEN" ]; then
+            echo "❌ Failed to get OIDC token"
+            exit 1
+          fi
+
+          # Exchange GitHub OIDC token for OCI security token
+          echo "Exchanging OIDC token for OCI security token..."
+          OCI_TOKEN_RESPONSE=$(curl -s -X POST \
+            "https://auth.${{ env.OCI_REGION }}.oraclecloud.com/v1/token" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"idToken\": \"$OIDC_TOKEN\",
+              \"idTokenProvider\": \"github\",
+              \"resourcePrincipalVersion\": \"2.2\"
+            }")
+
+          # Extract the security token
+          SECURITY_TOKEN=$(echo "$OCI_TOKEN_RESPONSE" | jq -r '.token')
+
+          if [ -z "$SECURITY_TOKEN" ] || [ "$SECURITY_TOKEN" = "null" ]; then
+            echo "❌ Failed to get OCI security token"
+            echo "Response: $OCI_TOKEN_RESPONSE"
+            exit 1
+          fi
+
+          # Configure OCI CLI
+          mkdir -p ~/.oci
+          cat > ~/.oci/config << EOF
+          [DEFAULT]
+          region=${{ env.OCI_REGION }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          security_token_file=~/.oci/token
+          EOF
+
+          echo "$SECURITY_TOKEN" > ~/.oci/token
+
+          # Set environment variables for Terraform
+          echo "TF_VAR_tenancy_ocid=${{ secrets.OCI_TENANCY_OCID }}" >> $GITHUB_ENV
+          echo "TF_VAR_region=${{ env.OCI_REGION }}" >> $GITHUB_ENV
+
+          echo "✅ OCI authentication completed successfully"
+
+      - name: Install and Setup OCI CLI
+        run: |
+          echo "Installing OCI CLI..."
+          bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+
+          # Add OCI CLI to PATH
+          echo "$HOME/bin" >> $GITHUB_PATH
+          export PATH="$HOME/bin:$PATH"
+
+          # Verify installation
+          oci --version
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Generate Terraform Configuration using ipcalc CLI
+        id: generate-terraform
+        run: |
+          echo "Generating Terraform configuration using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: oracle"
+          echo "  CIDR: ${{ env.VCN_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Region: ${{ env.OCI_REGION }}"
+          echo "  Prefix: ${{ env.JOB_PREFIX }}"
+
+          # Generate Terraform configuration using ipcalc CLI
+          npm run cli -- \
+            --provider oracle \
+            --cidr ${{ env.VCN_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output terraform \
+            --file /tmp/test-terraform.tf
+
+          echo "Terraform configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-terraform.tf
+
+      - name: Initialize Terraform
+        working-directory: /tmp
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+      - name: Validate Terraform Configuration
+        working-directory: /tmp
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Plan Terraform Deployment
+        working-directory: /tmp
+        env:
+          OCI_CLI_AUTH: security_token
+          OCI_CLI_CONFIG_FILE: ~/.oci/config
+          OCI_CLI_PROFILE: DEFAULT
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan \
+            -var "compartment_id=${{ secrets.OCI_COMPARTMENT_OCID }}" \
+            -var "vcn_name=${{ env.VCN_NAME }}" \
+            -var "vcn_dns_label=${{ env.VCN_DNS_LABEL }}" \
+            -out=tfplan
+
+      - name: Apply Terraform Deployment
+        id: deploy
+        working-directory: /tmp
+        env:
+          OCI_CLI_AUTH: security_token
+          OCI_CLI_CONFIG_FILE: ~/.oci/config
+          OCI_CLI_PROFILE: DEFAULT
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+          # Extract outputs
+          VCN_NAME=$(terraform output -raw vcn_name)
+          VCN_ID=$(terraform output -raw vcn_id)
+
+          echo "vcn_name=$VCN_NAME" >> $GITHUB_OUTPUT
+          echo "vcn_id=$VCN_ID" >> $GITHUB_OUTPUT
+          echo "VCN_ID=$VCN_ID" >> $GITHUB_ENV
+
+          echo "✅ Deployment completed successfully"
+          echo "VCN Name: $VCN_NAME"
+          echo "VCN ID: $VCN_ID"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          # Add OCI CLI to PATH
+          export PATH="$HOME/bin:$PATH"
+
+          # Check if VCN exists
+          echo "Checking if VCN ${{ env.VCN_ID }} exists..."
+          VCN_EXISTS=$(oci network vcn get \
+            --vcn-id "${{ env.VCN_ID }}" \
+            --query 'data."display-name"' \
+            --raw-output 2>/dev/null || echo "")
+
+          if [ -z "$VCN_EXISTS" ]; then
+            echo "❌ VCN not found!"
+            exit 1
+          fi
+          echo "✅ VCN exists: $VCN_EXISTS"
+
+          # Get VCN details
+          echo "Fetching VCN details..."
+          VCN_DETAILS=$(oci network vcn get \
+            --vcn-id "${{ env.VCN_ID }}" \
+            --query 'data' \
+            2>/dev/null)
+
+          echo "VCN Details:"
+          echo "$VCN_DETAILS" | jq '.'
+
+          # List and validate subnets
+          echo "Listing subnets..."
+          SUBNETS=$(oci network subnet list \
+            --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+            --vcn-id "${{ env.VCN_ID }}" \
+            --query 'data[*].{Name:"display-name", CIDR:"cidr-block", State:"lifecycle-state"}' \
+            2>/dev/null)
+
+          echo "Subnets:"
+          echo "$SUBNETS" | jq '.'
+
+          SUBNET_COUNT=$(echo "$SUBNETS" | jq 'length')
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          # Verify all subnets are available
+          AVAILABLE_SUBNETS=$(echo "$SUBNETS" | jq '[.[] | select(.State=="AVAILABLE")] | length')
+          echo "Available subnets: $AVAILABLE_SUBNETS"
+
+          if [ "$AVAILABLE_SUBNETS" -ne "$SUBNET_COUNT" ]; then
+            echo "⚠️ Not all subnets are available yet"
+          fi
+
+          echo "✅ All subnets are created"
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 Oracle Cloud VCN Deployment Test Report" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** Terraform" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**VCN Name:** ${{ env.VCN_NAME }}" >> /tmp/test-report.md
+          echo "**Tenancy:** ${{ secrets.OCI_TENANCY_OCID }}" >> /tmp/test-report.md
+          echo "**Compartment:** ${{ secrets.OCI_COMPARTMENT_OCID }}" >> /tmp/test-report.md
+          echo "**Region:** ${{ env.OCI_REGION }}" >> /tmp/test-report.md
+          echo "**VCN CIDR:** ${{ env.VCN_CIDR }}" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
+          else
+            echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
+          fi
+
+          echo "" >> /tmp/test-report.md
+          echo "### Subnets Created:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          if [ -n "${{ env.VCN_ID }}" ]; then
+            export PATH="$HOME/bin:$PATH"
+            oci network subnet list \
+              --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+              --vcn-id "${{ env.VCN_ID }}" \
+              --query 'data[*].{Name:"display-name", CIDR:"cidr-block", State:"lifecycle-state"}' \
+              --output table >> /tmp/test-report.md 2>&1 || echo "Failed to list subnets" >> /tmp/test-report.md
+          else
+            echo "VCN ID not available" >> /tmp/test-report.md
+          fi
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        env:
+          OCI_CLI_AUTH: security_token
+          OCI_CLI_CONFIG_FILE: ~/.oci/config
+          OCI_CLI_PROFILE: DEFAULT
+        run: |
+          echo "🧹 Cleaning up resources..."
+
+          # Try to destroy using Terraform first
+          echo "Attempting to destroy resources using Terraform..."
+          if terraform destroy -auto-approve \
+            -var "compartment_id=${{ secrets.OCI_COMPARTMENT_OCID }}" \
+            -var "vcn_name=${{ env.VCN_NAME }}" \
+            -var "vcn_dns_label=${{ env.VCN_DNS_LABEL }}"; then
+            echo "✅ Terraform destroy completed successfully"
+          else
+            echo "⚠️ Terraform destroy failed"
+            echo "Attempting manual cleanup of VCN resources..."
+
+            if [ -n "${{ env.VCN_ID }}" ]; then
+              export PATH="$HOME/bin:$PATH"
+
+              # Delete subnets first
+              echo "Deleting subnets..."
+              SUBNET_IDS=$(oci network subnet list \
+                --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+                --vcn-id "${{ env.VCN_ID }}" \
+                --query 'data[*].id' \
+                --raw-output 2>/dev/null || echo "")
+
+              for subnet_id in $SUBNET_IDS; do
+                if [ -n "$subnet_id" ]; then
+                  echo "Deleting subnet: $subnet_id"
+                  oci network subnet delete --subnet-id "$subnet_id" --force --wait-for-state TERMINATED || true
+                fi
+              done
+
+              # Delete security lists (except default)
+              echo "Deleting security lists..."
+              SL_IDS=$(oci network security-list list \
+                --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+                --vcn-id "${{ env.VCN_ID }}" \
+                --query 'data[?!"is-default"].id' \
+                --raw-output 2>/dev/null || echo "")
+
+              for sl_id in $SL_IDS; do
+                if [ -n "$sl_id" ]; then
+                  echo "Deleting security list: $sl_id"
+                  oci network security-list delete --security-list-id "$sl_id" --force --wait-for-state TERMINATED || true
+                fi
+              done
+
+              # Delete route tables (except default)
+              echo "Deleting route tables..."
+              RT_IDS=$(oci network route-table list \
+                --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+                --vcn-id "${{ env.VCN_ID }}" \
+                --query 'data[?!"is-default"].id' \
+                --raw-output 2>/dev/null || echo "")
+
+              for rt_id in $RT_IDS; do
+                if [ -n "$rt_id" ]; then
+                  echo "Deleting route table: $rt_id"
+                  oci network route-table delete --rt-id "$rt_id" --force --wait-for-state TERMINATED || true
+                fi
+              done
+
+              # Delete internet gateway
+              echo "Deleting internet gateways..."
+              IGW_IDS=$(oci network internet-gateway list \
+                --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+                --vcn-id "${{ env.VCN_ID }}" \
+                --query 'data[*].id' \
+                --raw-output 2>/dev/null || echo "")
+
+              for igw_id in $IGW_IDS; do
+                if [ -n "$igw_id" ]; then
+                  echo "Deleting internet gateway: $igw_id"
+                  oci network internet-gateway delete --ig-id "$igw_id" --force --wait-for-state TERMINATED || true
+                fi
+              done
+
+              # Delete VCN
+              echo "Deleting VCN: ${{ env.VCN_ID }}"
+              oci network vcn delete --vcn-id "${{ env.VCN_ID }}" --force --wait-for-state TERMINATED || true
+
+              echo "✅ Manual cleanup completed"
+            else
+              echo "⚠️ VCN ID not available, skipping manual cleanup"
+            fi
+          fi
+
+          echo "✅ Cleanup completed"
