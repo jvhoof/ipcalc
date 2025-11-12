@@ -89,10 +89,10 @@ jobs:
           echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
           OIDC_JWT=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
           echo "OIDC_JWT=$OIDC_JWT"
-          echo "$OIDC_JWT" | base64 
           echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN=$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
           echo "ACTIONS_ID_TOKEN_REQUEST_URL=$ACTIONS_ID_TOKEN_REQUEST_URL"
           echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+          set
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
