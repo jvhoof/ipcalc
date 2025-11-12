@@ -1,0 +1,54 @@
+name: "[Network] GCP VPC Deployment Test"
+
+on:
+  workflow_dispatch:  # Allow manual trigger with parameters
+    inputs:
+      prefix:
+        description: 'Resource prefix for naming'
+        required: false
+        default: 'ipcalc-qa'
+      region:
+        description: 'GCP region'
+        required: false
+        default: 'eu-central1'
+      vpc_cidr:
+        description: 'VPC CIDR block'
+        required: false
+        default: '172.16.1.0/24'
+      subnet_count:
+        description: 'Number of subnets to create'
+        required: false
+        default: '4'
+  push:
+    branches:
+      - beta  # Trigger on push to beta branch
+  pull_request:
+    paths:
+      - 'src/templates/gcp/**'
+      - '.github/workflows/gcp-vpc-test.yml'
+
+env:
+  # Workflow parameters - workflow_dispatch inputs take precedence over env vars
+  RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.GCP_RESOURCE_PREFIX || 'ipcalc-test' }}
+  GCP_REGION: ${{ github.event.inputs.region || vars.GCP_REGION || 'eu-central1' }}
+  VPC_CIDR: ${{ github.event.inputs.vpc_cidr || vars.GCP_VPC_CIDR || '172.16.1.0/24' }}
+  SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.GCP_SUBNET_COUNT || '4' }}
+
+jobs:
+  deploy-with-terraform:
+    name: Ready set test
+    runs-on: ubuntu-latest
+
+    # Add these permissions for Workload Identity Federation
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Ready set test
+        id: test-set
+        run: |
+          echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+          echo "org=$GITHUB_ORG"
+          echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+          set
