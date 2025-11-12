@@ -55,6 +55,15 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
         
       - name: Authenticate to Google Cloud
         id: auth
@@ -62,3 +71,77 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           project_id: 'infra-lodge-268907'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Generate Terraform Configuration using ipcalc CLI
+        id: generate-terraform
+        run: |
+          echo "Generating Terraform configuration using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: gcp"
+          echo "  CIDR: ${{ env.VPC_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Region: ${{ env.GCP_REGION }}"
+          echo "  Prefix: ${{ env.JOB_PREFIX }}"
+
+          # Generate Terraform configuration using ipcalc CLI
+          npm run cli -- \
+            --provider gcp \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output terraform \
+            --file /tmp/test-terraform.tf
+
+          echo "Terraform configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-terraform.tf
+
+      - name: Initialize Terraform
+        working-directory: /tmp
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+      - name: Validate Terraform Configuration
+        working-directory: /tmp
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Plan Terraform Deployment
+        working-directory: /tmp
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan \
+            -var "project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}" \
+            -out=tfplan
+
+      - name: Apply Terraform Deployment
+        id: deploy
+        working-directory: /tmp
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+          # Extract outputs
+          VPC_NAME=$(terraform output -raw vpc_name)
+          VPC_ID=$(terraform output -raw vpc_id)
+          VPC_SELF_LINK=$(terraform output -raw vpc_self_link)
+
+          echo "vpc_name=$VPC_NAME" >> $GITHUB_OUTPUT
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "vpc_self_link=$VPC_SELF_LINK" >> $GITHUB_OUTPUT
+
+          echo "VPC_SELF_LINK=$VPC_SELF_LINK" >> $GITHUB_ENV
+
+          echo "✅ Deployment completed successfully"
+          echo "VPC Name: $VPC_NAME"
+          echo "VPC ID: $VPC_ID"
