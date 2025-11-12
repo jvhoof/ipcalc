@@ -42,7 +42,7 @@ jobs:
     # Add these permissions for Workload Identity Federation
     permissions:
       id-token: write
-      contents: read
+      contents: write
 
     steps:
       - name: Generate Unique Identifier
