@@ -45,6 +45,17 @@ jobs:
       contents: write
 
     steps:
+     - name: "Generate Unique Identifier"
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+          VPC_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-vpc"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
       - name: Ready set test
         id: test-set
         run: |
