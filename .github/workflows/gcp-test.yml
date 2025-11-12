@@ -41,8 +41,8 @@ jobs:
 
     # Add these permissions for Workload Identity Federation
     permissions:
-      id-token: write
-      contents: read
+      id-token: 'write'
+      contents: 'read'
 
     steps:
       - name: "Generate Unique Identifier"
@@ -82,6 +82,16 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           project_id: 'infra-lodge-268907'
+ 
+      - name: Ready set test 2
+        id: test-set2
+        run: |
+          echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+          OIDC_JWT=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+          echo "OIDC_JWT=$OIDC_JWT"
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN=$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL=$ACTIONS_ID_TOKEN_REQUEST_URL"
+          echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
