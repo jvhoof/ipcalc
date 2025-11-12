@@ -42,7 +42,7 @@ jobs:
     # Add these permissions for Workload Identity Federation
     permissions:
       id-token: write
-      contents: write
+      contents: read
 
     steps:
      - name: "Generate Unique Identifier"
@@ -56,13 +56,13 @@ jobs:
           echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
 
-      - name: Ready set test
-        id: test-set
-        run: |
-          echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
-          echo "org=$GITHUB_ORG"
-          echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
-          set
+    - name: Ready set test
+       id: test-set
+       run: |
+         echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+         echo "org=$GITHUB_ORG"
+         echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+           set
 
       - name: Checkout code
         uses: actions/checkout@v4
