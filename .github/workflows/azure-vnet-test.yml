@@ -22,6 +22,8 @@ on:
   push:
     branches:
       - beta  # Trigger on push to main branch
+    paths-ignore:
+      - '.github/workflows/**'
   pull_request:
     paths:
       - 'src/templates/azure/**'
