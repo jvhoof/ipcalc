@@ -1,0 +1,312 @@
+name: "[Network] AliCloud VPC Deployment Test"
+
+on:
+  workflow_dispatch:  # Allow manual trigger with parameters
+    inputs:
+      prefix:
+        description: 'Resource prefix for naming'
+        required: false
+        default: 'ipcalc-qa'
+      region:
+        description: 'AliCloud region'
+        required: false
+        default: 'cn-hangzhou'
+      vpc_cidr:
+        description: 'VPC CIDR block'
+        required: false
+        default: '172.16.1.0/24'
+      subnet_count:
+        description: 'Number of vSwitches to create'
+        required: false
+        default: '4'
+  push:
+    branches:
+      - beta  # Trigger on push to beta branch
+  pull_request:
+    paths:
+      - 'src/templates/alicloud/**'
+      - '.github/workflows/alicloud-vpc-test.yml'
+
+env:
+  # Workflow parameters - workflow_dispatch inputs take precedence over env vars
+  RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.ALICLOUD_RESOURCE_PREFIX || 'ipcalc-test' }}
+  ALICLOUD_REGION: ${{ github.event.inputs.region || vars.ALICLOUD_REGION || 'cn-hangzhou' }}
+  VPC_CIDR: ${{ github.event.inputs.vpc_cidr || vars.ALICLOUD_VPC_CIDR || '172.16.1.0/24' }}
+  VSWITCH_COUNT: ${{ github.event.inputs.subnet_count || vars.ALICLOUD_VSWITCH_COUNT || '4' }}
+
+jobs:
+  deploy-with-terraform:
+    name: Deploy and Test with Terraform
+    runs-on: ubuntu-latest
+
+    # Add these permissions for OIDC
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+          VPC_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-vpc"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Authenticate to AliCloud using OIDC
+        id: auth
+        uses: aliyun/configure-aliyun-credentials-action@v1
+        with:
+          oidc-provider-arn: ${{ secrets.ALICLOUD_OIDC_PROVIDER_ARN }}
+          oidc-role-arn: ${{ secrets.ALICLOUD_OIDC_ROLE_ARN }}
+          region-id: ${{ env.ALICLOUD_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Generate Terraform Configuration using ipcalc CLI
+        id: generate-terraform
+        run: |
+          echo "Generating Terraform configuration using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: alicloud"
+          echo "  CIDR: ${{ env.VPC_CIDR }}"
+          echo "  vSwitches: ${{ env.VSWITCH_COUNT }}"
+          echo "  Region: ${{ env.ALICLOUD_REGION }}"
+          echo "  Prefix: ${{ env.JOB_PREFIX }}"
+
+          # Generate Terraform configuration using ipcalc CLI
+          npm run cli -- \
+            --provider alicloud \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.VSWITCH_COUNT }} \
+            --output terraform \
+            --file /tmp/test-terraform.tf
+
+          echo "Terraform configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-terraform.tf
+
+      - name: Initialize Terraform
+        working-directory: /tmp
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+      - name: Validate Terraform Configuration
+        working-directory: /tmp
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Plan Terraform Deployment
+        working-directory: /tmp
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan \
+            -var "region=${{ env.ALICLOUD_REGION }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}" \
+            -out=tfplan
+
+      - name: Apply Terraform Deployment
+        id: deploy
+        working-directory: /tmp
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+          # Extract outputs
+          VPC_NAME=$(terraform output -raw vpc_name)
+          VPC_ID=$(terraform output -raw vpc_id)
+
+          echo "vpc_name=$VPC_NAME" >> $GITHUB_OUTPUT
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+
+          echo "✅ Deployment completed successfully"
+          echo "VPC Name: $VPC_NAME"
+          echo "VPC ID: $VPC_ID"
+
+      - name: Install AliCloud CLI
+        run: |
+          echo "Installing AliCloud CLI..."
+          wget https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xzf aliyun-cli-linux-latest-amd64.tgz
+          sudo mv aliyun /usr/local/bin/
+          aliyun version
+
+      - name: Configure AliCloud CLI with OIDC credentials
+        run: |
+          echo "Configuring AliCloud CLI with OIDC credentials..."
+          # The credentials are already set as environment variables by the auth step
+          aliyun configure set \
+            --profile default \
+            --mode AK \
+            --region ${{ env.ALICLOUD_REGION }} \
+            --access-key-id ${ALICLOUD_ACCESS_KEY_ID} \
+            --access-key-secret ${ALICLOUD_ACCESS_KEY_SECRET}
+
+          if [ -n "${ALICLOUD_SECURITY_TOKEN}" ]; then
+            aliyun configure set \
+              --profile default \
+              --sts-token ${ALICLOUD_SECURITY_TOKEN}
+          fi
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          # Check if VPC exists
+          echo "Checking if VPC ${{ env.VPC_ID }} exists..."
+          VPC_EXISTS=$(aliyun vpc DescribeVpcs \
+            --VpcId ${{ env.VPC_ID }} \
+            --region ${{ env.ALICLOUD_REGION }} \
+            | jq -r '.Vpcs.Vpc[0].VpcId' 2>/dev/null || echo "")
+
+          if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" == "null" ]; then
+            echo "❌ VPC not found!"
+            exit 1
+          fi
+          echo "✅ VPC exists: $VPC_EXISTS"
+
+          # Validate VPC CIDR
+          echo "Validating VPC CIDR block..."
+          VPC_CIDR_BLOCK=$(aliyun vpc DescribeVpcs \
+            --VpcId ${{ env.VPC_ID }} \
+            --region ${{ env.ALICLOUD_REGION }} \
+            | jq -r '.Vpcs.Vpc[0].CidrBlock')
+
+          if [ "$VPC_CIDR_BLOCK" != "${{ env.VPC_CIDR }}" ]; then
+            echo "❌ VPC CIDR mismatch! Expected: ${{ env.VPC_CIDR }}, Got: $VPC_CIDR_BLOCK"
+            exit 1
+          fi
+          echo "✅ VPC CIDR is correct: $VPC_CIDR_BLOCK"
+
+          # List and validate vSwitches
+          echo "Listing vSwitches..."
+          VSWITCH_DATA=$(aliyun vpc DescribeVSwitches \
+            --VpcId ${{ env.VPC_ID }} \
+            --region ${{ env.ALICLOUD_REGION }})
+
+          echo "vSwitch details:"
+          echo "$VSWITCH_DATA" | jq -r '.VSwitches.VSwitch[] | "ID: \(.VSwitchId), CIDR: \(.CidrBlock), Zone: \(.ZoneId), Status: \(.Status)"'
+
+          VSWITCH_COUNT=$(echo "$VSWITCH_DATA" | jq -r '.VSwitches.VSwitch | length')
+
+          echo "✅ Found $VSWITCH_COUNT vSwitch(es)"
+
+          if [ "$VSWITCH_COUNT" -lt 1 ]; then
+            echo "❌ No vSwitches found!"
+            exit 1
+          fi
+
+          # Check vSwitch status
+          FAILED_VSWITCHES=$(echo "$VSWITCH_DATA" | jq -r '.VSwitches.VSwitch[] | select(.Status != "Available") | .VSwitchId')
+
+          if [ -n "$FAILED_VSWITCHES" ]; then
+            echo "❌ Some vSwitches are not available: $FAILED_VSWITCHES"
+            exit 1
+          fi
+
+          echo "✅ All vSwitches are available"
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 AliCloud VPC Deployment Test Report" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** Terraform" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**VPC Name:** ${{ env.VPC_NAME }}" >> /tmp/test-report.md
+          echo "**VPC ID:** ${{ env.VPC_ID }}" >> /tmp/test-report.md
+          echo "**Region:** ${{ env.ALICLOUD_REGION }}" >> /tmp/test-report.md
+          echo "**VPC CIDR:** ${{ env.VPC_CIDR }}" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
+          else
+            echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
+          fi
+
+          echo "" >> /tmp/test-report.md
+          echo "### vSwitches Created:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            aliyun vpc DescribeVSwitches \
+              --VpcId ${{ env.VPC_ID }} \
+              --region ${{ env.ALICLOUD_REGION }} \
+              | jq -r '.VSwitches.VSwitch[] | "ID: \(.VSwitchId), CIDR: \(.CidrBlock), Zone: \(.ZoneId), Status: \(.Status)"' >> /tmp/test-report.md 2>&1 || echo "Failed to list vSwitches" >> /tmp/test-report.md
+          else
+            echo "VPC ID not available" >> /tmp/test-report.md
+          fi
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        run: |
+          echo "🧹 Cleaning up resources..."
+
+          # Try to destroy using Terraform first
+          echo "Attempting to destroy resources using Terraform..."
+          if terraform destroy -auto-approve \
+            -var "region=${{ env.ALICLOUD_REGION }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}"; then
+            echo "✅ Terraform destroy completed successfully"
+          else
+            echo "⚠️ Terraform destroy failed"
+            echo "Attempting manual cleanup of VPC resources..."
+
+            if [ -n "${{ env.VPC_ID }}" ]; then
+              # Delete vSwitches
+              echo "Deleting vSwitches..."
+              VSWITCH_IDS=$(aliyun vpc DescribeVSwitches \
+                --VpcId ${{ env.VPC_ID }} \
+                --region ${{ env.ALICLOUD_REGION }} \
+                | jq -r '.VSwitches.VSwitch[].VSwitchId')
+
+              for vswitch_id in $VSWITCH_IDS; do
+                echo "Deleting vSwitch: $vswitch_id"
+                aliyun vpc DeleteVSwitch \
+                  --VSwitchId "$vswitch_id" \
+                  --region ${{ env.ALICLOUD_REGION }} || true
+                sleep 2
+              done
+
+              # Delete VPC
+              echo "Deleting VPC: ${{ env.VPC_ID }}"
+              aliyun vpc DeleteVpc \
+                --VpcId ${{ env.VPC_ID }} \
+                --region ${{ env.ALICLOUD_REGION }} || true
+
+              echo "✅ Manual cleanup completed"
+            else
+              echo "⚠️ VPC ID not available, skipping manual cleanup"
+            fi
+          fi
+
+          echo "✅ Cleanup completed"
