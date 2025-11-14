@@ -32,7 +32,7 @@
   },
   "variables": {
     "resourceGroupName": "[concat(parameters('prefix'), '-rg')]",
-    "vnetName": "[concat(parameters('prefix'), '-vnet')]"{{subnetVariables}}
+    "vnetName": "[concat(parameters('prefix'), '-vnet')]"{{subnetVariables}}{{spokeVnetVariables}}
   },
   "resources": [
     {
@@ -53,7 +53,7 @@
         "subnets": [{{subnetDefinitions}}
         ]
       }
-    }
+    }{{spokeVnetResources}}{{vnetPeeringResources}}
   ],
   "outputs": {
     "vnetName": {
@@ -69,6 +69,6 @@
       "metadata": {
         "description": "Resource ID of the Virtual Network"
       }
-    }{{subnetOutputs}}
+    }{{subnetOutputs}}{{spokeVnetOutputs}}
   }
 }

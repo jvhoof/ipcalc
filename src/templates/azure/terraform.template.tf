@@ -78,6 +78,9 @@ resource "azurerm_virtual_network" "vnet" {
 
 {{subnetResources}}
 
+{{spokeVnetResources}}
+{{vnetPeeringResources}}
+
 # ========================================
 # Outputs
 # ========================================
@@ -98,3 +101,4 @@ output "vnet_id" {
 }
 
 {{subnetOutputs}}
+{{spokeVnetOutputs}}

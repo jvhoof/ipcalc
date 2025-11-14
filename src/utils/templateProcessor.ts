@@ -18,9 +18,24 @@ export interface Subnet {
   zone?: string
 }
 
+export interface SpokeVNet {
+  cidr: string
+  numberOfSubnets: number
+  vnetInfo: {
+    network: string
+    totalIPs: number
+    firstIP: string
+    lastIP: string
+  } | null
+  subnets: Subnet[]
+  error: string
+}
+
 export interface TemplateData {
   vnetCidr: string
   subnets: Subnet[]
+  peeringEnabled?: boolean
+  spokeVNets?: SpokeVNet[]
 }
 
 // ============================================
@@ -51,10 +66,89 @@ export function processAzureCLITemplate(templateContent: string, data: TemplateD
     subnetCreation += `  --address-prefix "\${SUBNET${index + 1}_CIDR}"\n\n`
   })
 
+  // Generate spoke VNET variables
+  let spokeVnetVariables = ''
+  let spokeVnetCreation = ''
+  let vnetPeering = ''
+
+  if (data.peeringEnabled && data.spokeVNets && data.spokeVNets.length > 0) {
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+      const spokeName = `\${PREFIX}-spoke${spokeNum}-vnet`
+
+      // Spoke VNET variables
+      spokeVnetVariables += `SPOKE${spokeNum}_VNET_NAME="${spokeName}"\n`
+      spokeVnetVariables += `SPOKE${spokeNum}_VNET_CIDR="${spoke.cidr}"\n`
+
+      // Spoke subnet variables
+      spoke.subnets.forEach((subnet, subnetIndex) => {
+        spokeVnetVariables += `SPOKE${spokeNum}_SUBNET${subnetIndex + 1}_NAME="${spokeName}-subnet${subnetIndex + 1}"\n`
+        spokeVnetVariables += `SPOKE${spokeNum}_SUBNET${subnetIndex + 1}_CIDR="${subnet.cidr}"\n`
+      })
+      spokeVnetVariables += '\n'
+    })
+
+    // Spoke VNET creation section
+    spokeVnetCreation += '\n# ========================================\n'
+    spokeVnetCreation += '# Create Spoke VNets\n'
+    spokeVnetCreation += '# ========================================\n'
+
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      spokeVnetCreation += `\necho "Creating Spoke VNET ${spokeNum}: \${SPOKE${spokeNum}_VNET_NAME}"\n`
+      spokeVnetCreation += `az network vnet create \\\n`
+      spokeVnetCreation += `  --resource-group "\${RESOURCE_GROUP}" \\\n`
+      spokeVnetCreation += `  --name "\${SPOKE${spokeNum}_VNET_NAME}" \\\n`
+      spokeVnetCreation += `  --address-prefix "\${SPOKE${spokeNum}_VNET_CIDR}" \\\n`
+      spokeVnetCreation += `  --location "\${LOCATION}"\n\n`
+
+      // Create subnets for spoke VNET
+      spoke.subnets.forEach((subnet, subnetIndex) => {
+        spokeVnetCreation += `echo "Creating Spoke ${spokeNum} Subnet ${subnetIndex + 1}: \${SPOKE${spokeNum}_SUBNET${subnetIndex + 1}_NAME}"\n`
+        spokeVnetCreation += `az network vnet subnet create \\\n`
+        spokeVnetCreation += `  --resource-group "\${RESOURCE_GROUP}" \\\n`
+        spokeVnetCreation += `  --vnet-name "\${SPOKE${spokeNum}_VNET_NAME}" \\\n`
+        spokeVnetCreation += `  --name "\${SPOKE${spokeNum}_SUBNET${subnetIndex + 1}_NAME}" \\\n`
+        spokeVnetCreation += `  --address-prefix "\${SPOKE${spokeNum}_SUBNET${subnetIndex + 1}_CIDR}"\n\n`
+      })
+    })
+
+    // VNET Peering section
+    vnetPeering += '\n# ========================================\n'
+    vnetPeering += '# Create VNET Peering\n'
+    vnetPeering += '# ========================================\n'
+
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      // Hub to Spoke peering
+      vnetPeering += `\necho "Creating peering from Hub to Spoke ${spokeNum}"\n`
+      vnetPeering += `az network vnet peering create \\\n`
+      vnetPeering += `  --resource-group "\${RESOURCE_GROUP}" \\\n`
+      vnetPeering += `  --name "hub-to-spoke${spokeNum}" \\\n`
+      vnetPeering += `  --vnet-name "\${VNET_NAME}" \\\n`
+      vnetPeering += `  --remote-vnet "\${SPOKE${spokeNum}_VNET_NAME}" \\\n`
+      vnetPeering += `  --allow-vnet-access\n\n`
+
+      // Spoke to Hub peering
+      vnetPeering += `echo "Creating peering from Spoke ${spokeNum} to Hub"\n`
+      vnetPeering += `az network vnet peering create \\\n`
+      vnetPeering += `  --resource-group "\${RESOURCE_GROUP}" \\\n`
+      vnetPeering += `  --name "spoke${spokeNum}-to-hub" \\\n`
+      vnetPeering += `  --vnet-name "\${SPOKE${spokeNum}_VNET_NAME}" \\\n`
+      vnetPeering += `  --remote-vnet "\${VNET_NAME}" \\\n`
+      vnetPeering += `  --allow-vnet-access\n\n`
+    })
+  }
+
   // Replace placeholders
   content = content.replace('{{vnetCidr}}', data.vnetCidr)
   content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetCreation}}', subnetCreation)
+  content = content.replace('{{spokeVnetVariables}}', spokeVnetVariables)
+  content = content.replace('{{spokeVnetCreation}}', spokeVnetCreation)
+  content = content.replace('{{vnetPeering}}', vnetPeering)
 
   return content
 }
@@ -80,8 +174,8 @@ export function processAzureTerraformTemplate(templateContent: string, data: Tem
   data.subnets.forEach((subnet, index) => {
     subnetResources += `resource "azurerm_subnet" "subnet${index + 1}" {\n`
     subnetResources += `  name                 = "\${var.prefix}-subnet${index + 1}"\n`
-    subnetResources += `  resource_group_name  = azurerm_resource_group.main.name\n`
-    subnetResources += `  virtual_network_name = azurerm_virtual_network.main.name\n`
+    subnetResources += `  resource_group_name  = azurerm_resource_group.rg.name\n`
+    subnetResources += `  virtual_network_name = azurerm_virtual_network.vnet.name\n`
     subnetResources += `  address_prefixes     = [var.subnet${index + 1}_cidr]\n`
     subnetResources += `}\n\n`
   })
@@ -95,11 +189,98 @@ export function processAzureTerraformTemplate(templateContent: string, data: Tem
     subnetOutputs += `}\n`
   })
 
+  // Generate spoke VNET resources
+  let spokeVnetResources = ''
+  let vnetPeeringResources = ''
+  let spokeVnetOutputs = ''
+
+  if (data.peeringEnabled && data.spokeVNets && data.spokeVNets.length > 0) {
+    spokeVnetResources += '\n# ========================================\n'
+    spokeVnetResources += '# Spoke VNets\n'
+    spokeVnetResources += '# ========================================\n\n'
+
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      // Spoke VNET resource
+      spokeVnetResources += `resource "azurerm_virtual_network" "spoke${spokeNum}_vnet" {\n`
+      spokeVnetResources += `  name                = "\${var.prefix}-spoke${spokeNum}-vnet"\n`
+      spokeVnetResources += `  address_space       = ["${spoke.cidr}"]\n`
+      spokeVnetResources += `  location            = azurerm_resource_group.rg.location\n`
+      spokeVnetResources += `  resource_group_name = azurerm_resource_group.rg.name\n\n`
+      spokeVnetResources += `  tags = {\n`
+      spokeVnetResources += `    Environment = "Production"\n`
+      spokeVnetResources += `    ManagedBy   = "Terraform"\n`
+      spokeVnetResources += `    Role        = "Spoke"\n`
+      spokeVnetResources += `  }\n`
+      spokeVnetResources += `}\n\n`
+
+      // Spoke subnets
+      spoke.subnets.forEach((subnet, subnetIndex) => {
+        spokeVnetResources += `resource "azurerm_subnet" "spoke${spokeNum}_subnet${subnetIndex + 1}" {\n`
+        spokeVnetResources += `  name                 = "\${var.prefix}-spoke${spokeNum}-subnet${subnetIndex + 1}"\n`
+        spokeVnetResources += `  resource_group_name  = azurerm_resource_group.rg.name\n`
+        spokeVnetResources += `  virtual_network_name = azurerm_virtual_network.spoke${spokeNum}_vnet.name\n`
+        spokeVnetResources += `  address_prefixes     = ["${subnet.cidr}"]\n`
+        spokeVnetResources += `}\n\n`
+      })
+    })
+
+    // VNET Peering resources
+    vnetPeeringResources += '# ========================================\n'
+    vnetPeeringResources += '# VNET Peering\n'
+    vnetPeeringResources += '# ========================================\n\n'
+
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      // Hub to Spoke peering
+      vnetPeeringResources += `resource "azurerm_virtual_network_peering" "hub_to_spoke${spokeNum}" {\n`
+      vnetPeeringResources += `  name                      = "hub-to-spoke${spokeNum}"\n`
+      vnetPeeringResources += `  resource_group_name       = azurerm_resource_group.rg.name\n`
+      vnetPeeringResources += `  virtual_network_name      = azurerm_virtual_network.vnet.name\n`
+      vnetPeeringResources += `  remote_virtual_network_id = azurerm_virtual_network.spoke${spokeNum}_vnet.id\n`
+      vnetPeeringResources += `  allow_virtual_network_access = true\n`
+      vnetPeeringResources += `  allow_forwarded_traffic      = true\n`
+      vnetPeeringResources += `  allow_gateway_transit        = false\n`
+      vnetPeeringResources += `}\n\n`
+
+      // Spoke to Hub peering
+      vnetPeeringResources += `resource "azurerm_virtual_network_peering" "spoke${spokeNum}_to_hub" {\n`
+      vnetPeeringResources += `  name                      = "spoke${spokeNum}-to-hub"\n`
+      vnetPeeringResources += `  resource_group_name       = azurerm_resource_group.rg.name\n`
+      vnetPeeringResources += `  virtual_network_name      = azurerm_virtual_network.spoke${spokeNum}_vnet.name\n`
+      vnetPeeringResources += `  remote_virtual_network_id = azurerm_virtual_network.vnet.id\n`
+      vnetPeeringResources += `  allow_virtual_network_access = true\n`
+      vnetPeeringResources += `  allow_forwarded_traffic      = true\n`
+      vnetPeeringResources += `  use_remote_gateways          = false\n`
+      vnetPeeringResources += `}\n\n`
+    })
+
+    // Spoke VNET outputs
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      spokeVnetOutputs += `\noutput "spoke${spokeNum}_vnet_id" {\n`
+      spokeVnetOutputs += `  description = "ID of Spoke ${spokeNum} Virtual Network"\n`
+      spokeVnetOutputs += `  value       = azurerm_virtual_network.spoke${spokeNum}_vnet.id\n`
+      spokeVnetOutputs += `}\n`
+
+      spokeVnetOutputs += `\noutput "spoke${spokeNum}_vnet_name" {\n`
+      spokeVnetOutputs += `  description = "Name of Spoke ${spokeNum} Virtual Network"\n`
+      spokeVnetOutputs += `  value       = azurerm_virtual_network.spoke${spokeNum}_vnet.name\n`
+      spokeVnetOutputs += `}\n`
+    })
+  }
+
   // Replace placeholders
   content = content.replace('{{vnetCidr}}', data.vnetCidr)
   content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetResources}}', subnetResources)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
+  content = content.replace('{{spokeVnetResources}}', spokeVnetResources)
+  content = content.replace('{{vnetPeeringResources}}', vnetPeeringResources)
+  content = content.replace('{{spokeVnetOutputs}}', spokeVnetOutputs)
 
   return content
 }
@@ -135,11 +316,105 @@ export function processAzureBicepTemplate(templateContent: string, data: Templat
     subnetOutputs += `output subnet${index + 1}Id string = vnet.properties.subnets[${index}].id\n`
   })
 
+  // Generate spoke VNET resources
+  let spokeVnetResources = ''
+  let vnetPeeringResources = ''
+  let spokeVnetOutputs = ''
+
+  if (data.peeringEnabled && data.spokeVNets && data.spokeVNets.length > 0) {
+    spokeVnetResources += '\n// ========================================\n'
+    spokeVnetResources += '// Spoke VNets\n'
+    spokeVnetResources += '// ========================================\n\n'
+
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      // Spoke VNET resource
+      spokeVnetResources += `resource spoke${spokeNum}Vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {\n`
+      spokeVnetResources += `  name: '\${prefix}-spoke${spokeNum}-vnet'\n`
+      spokeVnetResources += `  location: location\n`
+      spokeVnetResources += `  tags: tags\n`
+      spokeVnetResources += `  properties: {\n`
+      spokeVnetResources += `    addressSpace: {\n`
+      spokeVnetResources += `      addressPrefixes: [\n`
+      spokeVnetResources += `        '${spoke.cidr}'\n`
+      spokeVnetResources += `      ]\n`
+      spokeVnetResources += `    }\n`
+      spokeVnetResources += `    subnets: [\n`
+
+      spoke.subnets.forEach((subnet, subnetIndex) => {
+        spokeVnetResources += `      {\n`
+        spokeVnetResources += `        name: '\${prefix}-spoke${spokeNum}-subnet${subnetIndex + 1}'\n`
+        spokeVnetResources += `        properties: {\n`
+        spokeVnetResources += `          addressPrefix: '${subnet.cidr}'\n`
+        spokeVnetResources += `        }\n`
+        spokeVnetResources += `      }\n`
+      })
+
+      spokeVnetResources += `    ]\n`
+      spokeVnetResources += `  }\n`
+      spokeVnetResources += `}\n\n`
+    })
+
+    // VNET Peering resources
+    vnetPeeringResources += '// ========================================\n'
+    vnetPeeringResources += '// VNET Peering\n'
+    vnetPeeringResources += '// ========================================\n\n'
+
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      // Hub to Spoke peering
+      vnetPeeringResources += `resource hubToSpoke${spokeNum}Peering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2023-05-01' = {\n`
+      vnetPeeringResources += `  parent: vnet\n`
+      vnetPeeringResources += `  name: 'hub-to-spoke${spokeNum}'\n`
+      vnetPeeringResources += `  properties: {\n`
+      vnetPeeringResources += `    allowVirtualNetworkAccess: true\n`
+      vnetPeeringResources += `    allowForwardedTraffic: true\n`
+      vnetPeeringResources += `    allowGatewayTransit: false\n`
+      vnetPeeringResources += `    useRemoteGateways: false\n`
+      vnetPeeringResources += `    remoteVirtualNetwork: {\n`
+      vnetPeeringResources += `      id: spoke${spokeNum}Vnet.id\n`
+      vnetPeeringResources += `    }\n`
+      vnetPeeringResources += `  }\n`
+      vnetPeeringResources += `}\n\n`
+
+      // Spoke to Hub peering
+      vnetPeeringResources += `resource spoke${spokeNum}ToHubPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2023-05-01' = {\n`
+      vnetPeeringResources += `  parent: spoke${spokeNum}Vnet\n`
+      vnetPeeringResources += `  name: 'spoke${spokeNum}-to-hub'\n`
+      vnetPeeringResources += `  properties: {\n`
+      vnetPeeringResources += `    allowVirtualNetworkAccess: true\n`
+      vnetPeeringResources += `    allowForwardedTraffic: true\n`
+      vnetPeeringResources += `    allowGatewayTransit: false\n`
+      vnetPeeringResources += `    useRemoteGateways: false\n`
+      vnetPeeringResources += `    remoteVirtualNetwork: {\n`
+      vnetPeeringResources += `      id: vnet.id\n`
+      vnetPeeringResources += `    }\n`
+      vnetPeeringResources += `  }\n`
+      vnetPeeringResources += `}\n\n`
+    })
+
+    // Spoke VNET outputs
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      spokeVnetOutputs += `\n@description('ID of Spoke ${spokeNum} Virtual Network')\n`
+      spokeVnetOutputs += `output spoke${spokeNum}VnetId string = spoke${spokeNum}Vnet.id\n`
+
+      spokeVnetOutputs += `\n@description('Name of Spoke ${spokeNum} Virtual Network')\n`
+      spokeVnetOutputs += `output spoke${spokeNum}VnetName string = spoke${spokeNum}Vnet.name\n`
+    })
+  }
+
   // Replace placeholders
   content = content.replace('{{vnetCidr}}', data.vnetCidr)
   content = content.replace('{{subnetParameters}}', subnetParameters)
   content = content.replace('{{subnetDefinitions}}', subnetDefinitions)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
+  content = content.replace('{{spokeVnetResources}}', spokeVnetResources)
+  content = content.replace('{{vnetPeeringResources}}', vnetPeeringResources)
+  content = content.replace('{{spokeVnetOutputs}}', spokeVnetOutputs)
 
   return content
 }
@@ -192,12 +467,118 @@ export function processAzureARMTemplate(templateContent: string, data: TemplateD
     subnetOutputs += `    }`
   })
 
+  // Generate spoke VNET resources
+  let spokeVnetVariables = ''
+  let spokeVnetResources = ''
+  let vnetPeeringResources = ''
+  let spokeVnetOutputs = ''
+
+  if (data.peeringEnabled && data.spokeVNets && data.spokeVNets.length > 0) {
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      // Spoke VNET variables
+      spokeVnetVariables += `,\n    "spoke${spokeNum}VnetName": "[concat(parameters('prefix'), '-spoke${spokeNum}-vnet')]"`
+
+      // Spoke VNET resource
+      spokeVnetResources += `,\n    {\n`
+      spokeVnetResources += `      "type": "Microsoft.Network/virtualNetworks",\n`
+      spokeVnetResources += `      "apiVersion": "2025-01-01",\n`
+      spokeVnetResources += `      "name": "[variables('spoke${spokeNum}VnetName')]",\n`
+      spokeVnetResources += `      "location": "[parameters('location')]",\n`
+      spokeVnetResources += `      "tags": {\n`
+      spokeVnetResources += `        "Environment": "Production",\n`
+      spokeVnetResources += `        "ManagedBy": "ARM Template",\n`
+      spokeVnetResources += `        "Role": "Spoke"\n`
+      spokeVnetResources += `      },\n`
+      spokeVnetResources += `      "properties": {\n`
+      spokeVnetResources += `        "addressSpace": {\n`
+      spokeVnetResources += `          "addressPrefixes": [\n`
+      spokeVnetResources += `            "${spoke.cidr}"\n`
+      spokeVnetResources += `          ]\n`
+      spokeVnetResources += `        },\n`
+      spokeVnetResources += `        "subnets": [\n`
+
+      spoke.subnets.forEach((subnet, subnetIndex) => {
+        if (subnetIndex > 0) spokeVnetResources += ','
+        spokeVnetResources += `\n          {\n`
+        spokeVnetResources += `            "name": "[concat(variables('spoke${spokeNum}VnetName'), '-subnet${subnetIndex + 1}')]",\n`
+        spokeVnetResources += `            "properties": {\n`
+        spokeVnetResources += `              "addressPrefix": "${subnet.cidr}"\n`
+        spokeVnetResources += `            }\n`
+        spokeVnetResources += `          }`
+      })
+
+      spokeVnetResources += `\n        ]\n`
+      spokeVnetResources += `      }\n`
+      spokeVnetResources += `    }`
+
+      // VNET Peering resources
+      // Hub to Spoke
+      vnetPeeringResources += `,\n    {\n`
+      vnetPeeringResources += `      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",\n`
+      vnetPeeringResources += `      "apiVersion": "2025-01-01",\n`
+      vnetPeeringResources += `      "name": "[concat(variables('vnetName'), '/hub-to-spoke${spokeNum}')]",\n`
+      vnetPeeringResources += `      "dependsOn": [\n`
+      vnetPeeringResources += `        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",\n`
+      vnetPeeringResources += `        "[resourceId('Microsoft.Network/virtualNetworks', variables('spoke${spokeNum}VnetName'))]"\n`
+      vnetPeeringResources += `      ],\n`
+      vnetPeeringResources += `      "properties": {\n`
+      vnetPeeringResources += `        "allowVirtualNetworkAccess": true,\n`
+      vnetPeeringResources += `        "allowForwardedTraffic": true,\n`
+      vnetPeeringResources += `        "allowGatewayTransit": false,\n`
+      vnetPeeringResources += `        "useRemoteGateways": false,\n`
+      vnetPeeringResources += `        "remoteVirtualNetwork": {\n`
+      vnetPeeringResources += `          "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('spoke${spokeNum}VnetName'))]"\n`
+      vnetPeeringResources += `        }\n`
+      vnetPeeringResources += `      }\n`
+      vnetPeeringResources += `    }`
+
+      // Spoke to Hub
+      vnetPeeringResources += `,\n    {\n`
+      vnetPeeringResources += `      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",\n`
+      vnetPeeringResources += `      "apiVersion": "2025-01-01",\n`
+      vnetPeeringResources += `      "name": "[concat(variables('spoke${spokeNum}VnetName'), '/spoke${spokeNum}-to-hub')]",\n`
+      vnetPeeringResources += `      "dependsOn": [\n`
+      vnetPeeringResources += `        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",\n`
+      vnetPeeringResources += `        "[resourceId('Microsoft.Network/virtualNetworks', variables('spoke${spokeNum}VnetName'))]"\n`
+      vnetPeeringResources += `      ],\n`
+      vnetPeeringResources += `      "properties": {\n`
+      vnetPeeringResources += `        "allowVirtualNetworkAccess": true,\n`
+      vnetPeeringResources += `        "allowForwardedTraffic": true,\n`
+      vnetPeeringResources += `        "allowGatewayTransit": false,\n`
+      vnetPeeringResources += `        "useRemoteGateways": false,\n`
+      vnetPeeringResources += `        "remoteVirtualNetwork": {\n`
+      vnetPeeringResources += `          "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"\n`
+      vnetPeeringResources += `        }\n`
+      vnetPeeringResources += `      }\n`
+      vnetPeeringResources += `    }`
+    })
+
+    // Spoke VNET outputs
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      spokeVnetOutputs += `,\n    "spoke${spokeNum}VnetId": {\n`
+      spokeVnetOutputs += `      "type": "string",\n`
+      spokeVnetOutputs += `      "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('spoke${spokeNum}VnetName'))]",\n`
+      spokeVnetOutputs += `      "metadata": {\n`
+      spokeVnetOutputs += `        "description": "Resource ID of Spoke ${spokeNum} Virtual Network"\n`
+      spokeVnetOutputs += `      }\n`
+      spokeVnetOutputs += `    }`
+    })
+  }
+
   // Replace placeholders
   content = content.replace('{{vnetCidr}}', data.vnetCidr)
   content = content.replace('{{subnetParameters}}', subnetParameters)
   content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetDefinitions}}', subnetDefinitions)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
+  content = content.replace('{{spokeVnetVariables}}', spokeVnetVariables)
+  content = content.replace('{{spokeVnetResources}}', spokeVnetResources)
+  content = content.replace('{{vnetPeeringResources}}', vnetPeeringResources)
+  content = content.replace('{{spokeVnetOutputs}}', spokeVnetOutputs)
 
   return content
 }
@@ -227,11 +608,108 @@ export function processAzurePowerShellTemplate(templateContent: string, data: Te
   // Generate subnet config list
   const subnetConfigList = data.subnets.map((_, index) => `$SubnetConfig${index + 1}`).join(', ')
 
+  // Generate spoke VNET resources
+  let spokeVnetVariables = ''
+  let spokeVnetCreation = ''
+  let vnetPeering = ''
+
+  if (data.peeringEnabled && data.spokeVNets && data.spokeVNets.length > 0) {
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+      const spokeName = `\${Prefix}-spoke${spokeNum}-vnet`
+
+      // Spoke VNET variables
+      spokeVnetVariables += `$Spoke${spokeNum}VNetName = "${spokeName}"\n`
+      spokeVnetVariables += `$Spoke${spokeNum}VNetCidr = "${spoke.cidr}"\n`
+
+      // Spoke subnet variables
+      spoke.subnets.forEach((subnet, subnetIndex) => {
+        spokeVnetVariables += `$Spoke${spokeNum}Subnet${subnetIndex + 1}Name = "${spokeName}-subnet${subnetIndex + 1}"\n`
+        spokeVnetVariables += `$Spoke${spokeNum}Subnet${subnetIndex + 1}Cidr = "${subnet.cidr}"\n`
+      })
+      spokeVnetVariables += '\n'
+    })
+
+    // Spoke VNET creation section
+    spokeVnetCreation += '\n# ========================================\n'
+    spokeVnetCreation += '# Create Spoke VNets\n'
+    spokeVnetCreation += '# ========================================\n\n'
+
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      // Create subnet configurations for spoke
+      spokeVnetCreation += `Write-Host "Creating Spoke ${spokeNum} subnet configurations..." -ForegroundColor Cyan\n`
+      spoke.subnets.forEach((subnet, subnetIndex) => {
+        spokeVnetCreation += `$Spoke${spokeNum}SubnetConfig${subnetIndex + 1} = New-AzVirtualNetworkSubnetConfig \`\n`
+        spokeVnetCreation += `    -Name $Spoke${spokeNum}Subnet${subnetIndex + 1}Name \`\n`
+        spokeVnetCreation += `    -AddressPrefix $Spoke${spokeNum}Subnet${subnetIndex + 1}Cidr\n`
+        spokeVnetCreation += `Write-Host "  - Spoke ${spokeNum} Subnet ${subnetIndex + 1}: $Spoke${spokeNum}Subnet${subnetIndex + 1}Name ($Spoke${spokeNum}Subnet${subnetIndex + 1}Cidr)" -ForegroundColor Gray\n\n`
+      })
+
+      // Create spoke VNET
+      spokeVnetCreation += `Write-Host "Creating Spoke ${spokeNum} Virtual Network: $Spoke${spokeNum}VNetName" -ForegroundColor Cyan\n`
+      spokeVnetCreation += `try {\n`
+      spokeVnetCreation += `    $spoke${spokeNum}Vnet = New-AzVirtualNetwork \`\n`
+      spokeVnetCreation += `        -Name $Spoke${spokeNum}VNetName \`\n`
+      spokeVnetCreation += `        -ResourceGroupName $ResourceGroupName \`\n`
+      spokeVnetCreation += `        -Location $Location \`\n`
+      spokeVnetCreation += `        -AddressPrefix $Spoke${spokeNum}VNetCidr \`\n`
+      const spokeSubnetConfigList = spoke.subnets.map((_, subnetIndex) => `$Spoke${spokeNum}SubnetConfig${subnetIndex + 1}`).join(', ')
+      spokeVnetCreation += `        -Subnet ${spokeSubnetConfigList} \`\n`
+      spokeVnetCreation += `        -Tag $Tags\n`
+      spokeVnetCreation += `    Write-Host "✓ Spoke ${spokeNum} Virtual Network created successfully" -ForegroundColor Green\n`
+      spokeVnetCreation += `}\n`
+      spokeVnetCreation += `catch {\n`
+      spokeVnetCreation += `    Write-Error "Failed to create Spoke ${spokeNum} Virtual Network: $_"\n`
+      spokeVnetCreation += `    exit 1\n`
+      spokeVnetCreation += `}\n\n`
+    })
+
+    // VNET Peering section
+    vnetPeering += '\n# ========================================\n'
+    vnetPeering += '# Create VNET Peering\n'
+    vnetPeering += '# ========================================\n\n'
+
+    data.spokeVNets.forEach((spoke, spokeIndex) => {
+      const spokeNum = spokeIndex + 1
+
+      // Hub to Spoke peering
+      vnetPeering += `Write-Host "Creating peering from Hub to Spoke ${spokeNum}" -ForegroundColor Cyan\n`
+      vnetPeering += `try {\n`
+      vnetPeering += `    Add-AzVirtualNetworkPeering \`\n`
+      vnetPeering += `        -Name "hub-to-spoke${spokeNum}" \`\n`
+      vnetPeering += `        -VirtualNetwork $vnet \`\n`
+      vnetPeering += `        -RemoteVirtualNetworkId $spoke${spokeNum}Vnet.Id\n`
+      vnetPeering += `    Write-Host "✓ Peering from Hub to Spoke ${spokeNum} created" -ForegroundColor Green\n`
+      vnetPeering += `}\n`
+      vnetPeering += `catch {\n`
+      vnetPeering += `    Write-Error "Failed to create peering from Hub to Spoke ${spokeNum}: $_"\n`
+      vnetPeering += `}\n\n`
+
+      // Spoke to Hub peering
+      vnetPeering += `Write-Host "Creating peering from Spoke ${spokeNum} to Hub" -ForegroundColor Cyan\n`
+      vnetPeering += `try {\n`
+      vnetPeering += `    Add-AzVirtualNetworkPeering \`\n`
+      vnetPeering += `        -Name "spoke${spokeNum}-to-hub" \`\n`
+      vnetPeering += `        -VirtualNetwork $spoke${spokeNum}Vnet \`\n`
+      vnetPeering += `        -RemoteVirtualNetworkId $vnet.Id\n`
+      vnetPeering += `    Write-Host "✓ Peering from Spoke ${spokeNum} to Hub created" -ForegroundColor Green\n`
+      vnetPeering += `}\n`
+      vnetPeering += `catch {\n`
+      vnetPeering += `    Write-Error "Failed to create peering from Spoke ${spokeNum} to Hub: $_"\n`
+      vnetPeering += `}\n\n`
+    })
+  }
+
   // Replace placeholders
   content = content.replace('{{vnetCidr}}', data.vnetCidr)
   content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetConfigurations}}', subnetConfigurations)
   content = content.replace('{{subnetConfigList}}', subnetConfigList)
+  content = content.replace('{{spokeVnetVariables}}', spokeVnetVariables)
+  content = content.replace('{{spokeVnetCreation}}', spokeVnetCreation)
+  content = content.replace('{{vnetPeering}}', vnetPeering)
 
   return content
 }

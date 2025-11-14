@@ -15,6 +15,7 @@ $VNetName = "${Prefix}-vnet"
 $VNetCidr = "{{vnetCidr}}"
 
 {{subnetVariables}}
+{{spokeVnetVariables}}
 
 $Tags = @{
     Environment = "Production"
@@ -47,7 +48,7 @@ Write-Host "Creating subnet configurations..." -ForegroundColor Cyan
 {{subnetConfigurations}}
 
 # ========================================
-# Create Virtual Network
+# Create Virtual Network (Hub)
 # ========================================
 
 Write-Host "Creating Virtual Network: $VNetName" -ForegroundColor Cyan
@@ -65,6 +66,9 @@ catch {
     Write-Error "Failed to create Virtual Network: $_"
     exit 1
 }
+
+{{spokeVnetCreation}}
+{{vnetPeering}}
 
 # ========================================
 # Display Results

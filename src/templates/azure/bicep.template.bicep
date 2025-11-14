@@ -34,7 +34,7 @@ param tags object = {
 // }
 
 // ========================================
-// Virtual Network
+// Virtual Network (Hub)
 // ========================================
 
 resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
@@ -53,6 +53,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
   }
 }
 
+{{spokeVnetResources}}
+{{vnetPeeringResources}}
+
 // ========================================
 // Outputs
 // ========================================
@@ -64,3 +67,4 @@ output vnetName string = vnet.name
 output vnetId string = vnet.id
 
 {{subnetOutputs}}
+{{spokeVnetOutputs}}
