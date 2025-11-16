@@ -1,15 +1,17 @@
-# Oracle Cloud OpenID Connect (OIDC) Authentication Setup Guide
+# Oracle Cloud API Key Authentication Setup Guide
 
-This guide provides step-by-step instructions for setting up OpenID Connect (OIDC) authentication between GitHub Actions and Oracle Cloud Infrastructure (OCI), allowing your GitHub workflows to securely authenticate without using long-lived credentials.
+This guide provides step-by-step instructions for setting up API key authentication between GitHub Actions and Oracle Cloud Infrastructure (OCI), with a focus on limiting permissions to network resources only.
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Overview of OIDC Authentication](#overview-of-oidc-authentication)
+2. [Overview of OCI Authentication](#overview-of-oci-authentication)
 3. [Step-by-Step Setup](#step-by-step-setup)
-4. [Testing Your Setup](#testing-your-setup)
-5. [Troubleshooting](#troubleshooting)
-6. [Additional Resources](#additional-resources)
+4. [Creating Network-Only Policies](#creating-network-only-policies)
+5. [Configuring GitHub Secrets](#configuring-github-secrets)
+6. [Testing Your Setup](#testing-your-setup)
+7. [Troubleshooting](#troubleshooting)
+8. [Additional Resources](#additional-resources)
 
 ---
 
@@ -19,296 +21,409 @@ Before starting, ensure you have:
 
 - **Oracle Cloud Infrastructure (OCI) account** with administrative access
 - **GitHub repository** with Actions enabled
-- **OCI CLI installed** (optional, for local testing)
+- Access to create users and policies in OCI
 - Basic understanding of cloud identity and access management concepts
 
 ---
 
-## Overview of OIDC Authentication
+## Overview of OCI Authentication
 
-### What is OIDC?
+### What is API Key Authentication?
 
-OpenID Connect (OIDC) is an authentication layer built on top of OAuth 2.0 that allows secure authentication without storing long-lived credentials. Instead of using static API keys or passwords, OIDC uses short-lived tokens that are automatically generated and rotated.
+Oracle Cloud Infrastructure uses API signing keys for secure API access. This method uses:
+- **RSA key pair**: A private key (kept secret) and a public key (uploaded to OCI)
+- **API request signing**: Each API request is cryptographically signed with the private key
+- **User-based authentication**: Each API key is associated with a specific OCI user
 
-### How GitHub Actions OIDC Works with Oracle Cloud
+### How It Works
 
 ```
-┌─────────────────┐      1. Request token     ┌─────────────────┐
-│                 │ ────────────────────────> │                 │
-│  GitHub Actions │                           │  GitHub OIDC    │
-│   Workflow      │ <──────────────────────── │   Provider      │
-│                 │      2. Return OIDC token │                 │
-└─────────────────┘                           └─────────────────┘
+┌─────────────────┐
+│  GitHub Actions │
+│   Workflow      │
+│                 │
+│  - User OCID    │
+│  - Private Key  │
+│  - Fingerprint  │
+└────────┬────────┘
          │
-         │ 3. Exchange token
-         │    for OCI credentials
+         │ Signs API requests
+         │ with private key
          ↓
 ┌─────────────────┐
-│                 │
 │  Oracle Cloud   │
 │  Identity (IAM) │
 │                 │
+│  - Verifies     │
+│    signature    │
+│  - Checks       │
+│    permissions  │
 └─────────────────┘
 ```
 
-**Benefits:**
-- ✅ No long-lived credentials stored in GitHub Secrets
-- ✅ Automatic token rotation
-- ✅ Fine-grained access control
-- ✅ Enhanced security and compliance
-- ✅ Audit trail for authentication events
+**Security Considerations:**
+- ✅ Use dedicated service accounts for automation
+- ✅ Apply principle of least privilege
+- ✅ Rotate keys regularly
+- ✅ Store private keys as GitHub encrypted secrets
+- ✅ Limit permissions to only required resources
 
 ---
 
 ## Step-by-Step Setup
 
-### Step 1: Configure Oracle Cloud Identity Domain
+### Step 1: Create a Dedicated OCI User for GitHub Actions
 
-#### 1.1 Create an Identity Domain (if not already exists)
+It's a best practice to create a dedicated user for automation rather than using your personal account.
+
+#### 1.1 Create the User
 
 1. Log in to the [Oracle Cloud Console](https://cloud.oracle.com)
-2. Navigate to **Identity & Security** → **Domains**
-3. If you don't have a domain, create one:
-   - Click **Create Domain**
-   - Enter a name (e.g., `github-actions-domain`)
-   - Choose **Free** tier or **Oracle Apps** depending on your needs
-   - Click **Create**
+2. Navigate to **Identity & Security** → **Domains** → **Default Domain** (or your custom domain)
+3. Click on **Users**
+4. Click **Create User**
+5. Fill in the details:
+   - **First name**: `GitHub`
+   - **Last name**: `Actions`
+   - **Username/Email**: `github-actions@yourdomain.com` (or `github.actions`)
+   - **Use the email address as the username**: Uncheck if you want a different username
+6. Click **Create**
 
-#### 1.2 Configure OAuth/OIDC Application
+#### 1.2 Note the User OCID
 
-1. Navigate to **Identity & Security** → **Domains** → Select your domain
-2. Click on **Integrated applications** (or **Applications**)
-3. Click **Add application**
-4. Select **Confidential Application**
-5. Configure the application:
-   - **Name**: `github-actions-oidc`
-   - **Description**: `OIDC integration for GitHub Actions`
+1. Click on the newly created user
+2. Copy the **OCID** (looks like: `ocid1.user.oc1..aaaaaaaxxxxx`)
+3. Save this value - you'll need it later as `OCI_USER_OCID`
 
-6. In the **Client Configuration** section:
-   - **Allowed Grant Types**: Select `JWT Assertion`
-   - **Client Type**: `Confidential`
-   - **Redirect URLs**: Add `https://token.actions.githubusercontent.com`
+### Step 2: Generate API Key Pair
 
-7. In the **Token Issuance Policy** section:
-   - **Grant the client access to Identity Cloud Service Admin APIs**: Enable this
-   - **Add resources**: Grant necessary API access
+#### 2.1 Generate Keys Using OpenSSL (Recommended)
 
-8. Click **Next** and then **Finish**
-
-9. **Important**: Save the **Client ID** and **Client Secret** (you'll need these later)
-
-### Step 2: Create OCI Identity Provider for GitHub
-
-#### 2.1 Create Identity Provider
-
-1. In Oracle Cloud Console, navigate to **Identity & Security** → **Federation**
-2. Click **Add Identity Provider**
-3. Configure the provider:
-   - **Name**: `github-actions-idp`
-   - **Description**: `GitHub Actions OIDC Provider`
-   - **Type**: Select `Microsoft` (or `Generic OIDC`)
-   - **Metadata URL**: `https://token.actions.githubusercontent.com/.well-known/openid-configuration`
-
-4. Click **Continue** and map attributes:
-   - **Identity Provider Username**: `sub` (subject claim)
-   - Map other attributes as needed
-
-5. Click **Create**
-
-### Step 3: Configure OCI IAM Policies
-
-#### 3.1 Create a Dynamic Group
-
-Dynamic groups allow you to group OCI resources based on matching rules.
-
-1. Navigate to **Identity & Security** → **Dynamic Groups**
-2. Click **Create Dynamic Group**
-3. Configure:
-   - **Name**: `github-actions-runners`
-   - **Description**: `Dynamic group for GitHub Actions runners`
-   - **Matching Rules**:
-   ```
-   ALL {request.principal.type='federateduser',
-        request.principal.claims.aud='sts.oracle.com',
-        request.principal.claims.iss='https://token.actions.githubusercontent.com'}
-   ```
-
-4. Click **Create**
-
-#### 3.2 Create IAM Policy
-
-1. Navigate to **Identity & Security** → **Policies**
-2. Click **Create Policy**
-3. Configure:
-   - **Name**: `github-actions-policy`
-   - **Description**: `Permissions for GitHub Actions workflows`
-   - **Compartment**: Select your target compartment
-
-4. Add policy statements (customize based on your needs):
-
-```
-Allow dynamic-group github-actions-runners to manage virtual-network-family in compartment <your-compartment-name>
-Allow dynamic-group github-actions-runners to manage instance-family in compartment <your-compartment-name>
-Allow dynamic-group github-actions-runners to use cloud-shell in tenancy
-Allow dynamic-group github-actions-runners to read all-resources in compartment <your-compartment-name>
-```
-
-**Example for VCN management:**
-```
-Allow dynamic-group github-actions-runners to manage vcns in compartment <your-compartment-name>
-Allow dynamic-group github-actions-runners to manage subnets in compartment <your-compartment-name>
-Allow dynamic-group github-actions-runners to manage internet-gateways in compartment <your-compartment-name>
-Allow dynamic-group github-actions-runners to manage route-tables in compartment <your-compartment-name>
-Allow dynamic-group github-actions-runners to manage security-lists in compartment <your-compartment-name>
-```
-
-5. Click **Create**
-
-### Step 4: Configure Workload Identity Pool (Alternative Method)
-
-Oracle Cloud also supports Resource Principal authentication for GitHub Actions. Here's an alternative setup:
-
-#### 4.1 Create Federation Provider
+On your local machine (Linux, macOS, or WSL on Windows):
 
 ```bash
-# Using OCI CLI
-oci iam identity-provider create-saml2-identity-provider \
-  --compartment-id <tenancy-ocid> \
-  --name "github-actions" \
-  --description "GitHub Actions OIDC" \
-  --metadata-url "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
+# Create a directory for the keys
+mkdir ~/.oci
+cd ~/.oci
+
+# Generate private key (2048-bit RSA)
+openssl genrsa -out oci_api_key.pem 2048
+
+# Set proper permissions
+chmod 600 oci_api_key.pem
+
+# Generate public key from private key
+openssl rsa -pubout -in oci_api_key.pem -out oci_api_key_public.pem
+
+# Display the private key (you'll add this to GitHub Secrets)
+cat oci_api_key.pem
+
+# Display the public key (you'll upload this to OCI)
+cat oci_api_key_public.pem
 ```
 
-### Step 5: Configure GitHub Repository Secrets
+#### 2.2 Alternative: Generate Keys Using OCI Console
 
-1. Navigate to your GitHub repository
-2. Go to **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
+1. In the OCI Console, navigate to your user profile
+2. Click **API Keys** in the left menu
+3. Click **Add API Key**
+4. Select **Generate API Key Pair**
+5. Click **Download Private Key** and **Download Public Key**
+6. Save both files securely
+
+### Step 3: Add Public Key to OCI User
+
+1. In OCI Console, navigate to **Identity & Security** → **Domains** → **Users**
+2. Click on the `github-actions` user you created
+3. In the **Resources** section on the left, click **API Keys**
+4. Click **Add API Key**
+5. Select **Paste Public Key**
+6. Paste the contents of `oci_api_key_public.pem` (including the `-----BEGIN PUBLIC KEY-----` and `-----END PUBLIC KEY-----` lines)
+7. Click **Add**
+
+#### 3.1 Note the Fingerprint
+
+After adding the key, OCI will display the fingerprint (looks like: `aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99`)
+
+**Save this value** - you'll need it later as `OCI_FINGERPRINT`
+
+### Step 4: Identify Your Tenancy and Compartment
+
+#### 4.1 Get Tenancy OCID
+
+1. In OCI Console, click the **Profile** icon (top right)
+2. Click **Tenancy: [your-tenancy-name]**
+3. Copy the **OCID** value
+4. Save this as `OCI_TENANCY_OCID`
+
+#### 4.2 Get Compartment OCID
+
+1. Navigate to **Identity & Security** → **Compartments**
+2. Find the compartment where you want to create VCN resources
+3. Click on the compartment name
+4. Copy the **OCID**
+5. Save this as `OCI_COMPARTMENT_OCID`
+
+**Tip**: You can use the root compartment (same as tenancy OCID) or create a dedicated compartment for testing.
+
+---
+
+## Creating Network-Only Policies
+
+To follow the principle of least privilege, create policies that grant only network-related permissions.
+
+### Step 1: Create a Group for GitHub Actions
+
+1. Navigate to **Identity & Security** → **Domains** → **Default Domain** → **Groups**
+2. Click **Create Group**
+3. Enter details:
+   - **Name**: `GitHubActionsNetworkAdmins`
+   - **Description**: `Group for GitHub Actions with network-only permissions`
+4. Click **Create**
+
+### Step 2: Add User to Group
+
+1. Click on the newly created group
+2. Click **Add User to Group**
+3. Select the `github-actions` user
+4. Click **Add**
+
+### Step 3: Create Network-Only Policy
+
+1. Navigate to **Identity & Security** → **Policies**
+2. Select the **compartment** where you want to apply the policy (usually root compartment for compartment-level policies)
+3. Click **Create Policy**
+4. Enter policy details:
+   - **Name**: `github-actions-network-policy`
+   - **Description**: `Network-only permissions for GitHub Actions`
+   - **Compartment**: Select root compartment or your target compartment
+
+5. Add the following policy statements:
+
+#### Option A: Full Network Management (Recommended for Testing)
+
+```
+Allow group GitHubActionsNetworkAdmins to manage virtual-network-family in compartment <compartment-name>
+```
+
+This grants complete control over all networking resources including:
+- VCNs (Virtual Cloud Networks)
+- Subnets
+- Route Tables
+- Security Lists
+- Network Security Groups
+- Internet Gateways
+- NAT Gateways
+- Service Gateways
+- DRGs (Dynamic Routing Gateways)
+- VLANs
+- IP addresses
+
+#### Option B: Granular Network Permissions (Most Restrictive)
+
+If you want fine-grained control, use individual permissions:
+
+```
+Allow group GitHubActionsNetworkAdmins to manage vcns in compartment <compartment-name>
+Allow group GitHubActionsNetworkAdmins to manage subnets in compartment <compartment-name>
+Allow group GitHubActionsNetworkAdmins to manage route-tables in compartment <compartment-name>
+Allow group GitHubActionsNetworkAdmins to manage security-lists in compartment <compartment-name>
+Allow group GitHubActionsNetworkAdmins to manage network-security-groups in compartment <compartment-name>
+Allow group GitHubActionsNetworkAdmins to manage internet-gateways in compartment <compartment-name>
+Allow group GitHubActionsNetworkAdmins to manage nat-gateways in compartment <compartment-name>
+Allow group GitHubActionsNetworkAdmins to manage service-gateways in compartment <compartment-name>
+```
+
+#### Option C: Read-Only Network Access
+
+For validation-only workflows:
+
+```
+Allow group GitHubActionsNetworkAdmins to inspect virtual-network-family in compartment <compartment-name>
+Allow group GitHubActionsNetworkAdmins to read virtual-network-family in compartment <compartment-name>
+```
+
+#### Additional Useful Permissions
+
+If your workflow needs to work across compartments:
+
+```
+Allow group GitHubActionsNetworkAdmins to read compartments in tenancy
+Allow group GitHubActionsNetworkAdmins to read tenancies in tenancy
+```
+
+For DNS integration:
+
+```
+Allow group GitHubActionsNetworkAdmins to manage dns in compartment <compartment-name>
+```
+
+For load balancers (if needed):
+
+```
+Allow group GitHubActionsNetworkAdmins to manage load-balancers in compartment <compartment-name>
+```
+
+6. Click **Create**
+
+### Understanding Policy Verbs
+
+| Verb | Permissions |
+|------|-------------|
+| `inspect` | List resources (no details) |
+| `read` | List and view resource details |
+| `use` | Read + ability to interact with resources |
+| `manage` | Full control (create, update, delete) |
+
+### Policy Best Practices
+
+1. **Use compartments** to isolate resources and limit blast radius
+2. **Start restrictive** and add permissions as needed
+3. **Use conditions** for time-based or IP-based restrictions (advanced)
+4. **Regular audits** of permissions and access logs
+5. **Separate policies** for different environments (dev, staging, prod)
+
+Example with conditions (advanced):
+
+```
+Allow group GitHubActionsNetworkAdmins to manage virtual-network-family in compartment test-environment where request.region = 'eu-frankfurt-1'
+```
+
+---
+
+## Configuring GitHub Secrets
+
+### Required Secrets
+
+Navigate to your GitHub repository → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
 
 Add the following secrets:
 
-| Secret Name | Description | Example Value |
-|-------------|-------------|---------------|
-| `OCI_TENANCY_OCID` | Your OCI Tenancy OCID | `ocid1.tenancy.oc1..aaaa...` |
-| `OCI_COMPARTMENT_OCID` | Target compartment OCID | `ocid1.compartment.oc1..aaaa...` |
-| `OCI_REGION` | OCI region identifier | `eu-frankfurt-1` |
-| `OCI_IDENTITY_DOMAIN_URL` | Identity domain endpoint | `https://idcs-xxx.identity.oraclecloud.com` |
+| Secret Name | Description | Example Value | How to Obtain |
+|-------------|-------------|---------------|---------------|
+| `OCI_USER_OCID` | User OCID for authentication | `ocid1.user.oc1..aaaaaa...` | Step 1.2 above |
+| `OCI_FINGERPRINT` | API key fingerprint | `aa:bb:cc:dd:ee:ff:00:11:22:33...` | Step 3.1 above |
+| `OCI_TENANCY_OCID` | Tenancy OCID | `ocid1.tenancy.oc1..aaaaaa...` | Step 4.1 above |
+| `OCI_COMPARTMENT_OCID` | Compartment where resources will be created | `ocid1.compartment.oc1..aaaaaa...` | Step 4.2 above |
+| `OCI_PRIVATE_KEY` | Private key content (entire file) | `-----BEGIN RSA PRIVATE KEY-----\n...` | Step 2.1 above |
 
-**Note**: With OIDC, you do NOT need to store:
-- ❌ User OCID
-- ❌ API key fingerprint
-- ❌ Private key content
+### How to Add OCI_PRIVATE_KEY Secret
 
-### Step 6: Update Your GitHub Workflow
+1. Copy the **entire content** of your private key file:
+   ```bash
+   cat ~/.oci/oci_api_key.pem
+   ```
 
-Here's an example workflow that uses OIDC authentication:
+2. In GitHub:
+   - Click **New repository secret**
+   - Name: `OCI_PRIVATE_KEY`
+   - Value: Paste the entire key including:
+     ```
+     -----BEGIN RSA PRIVATE KEY-----
+     MIIEpAIBAAKCAQEA...
+     ...
+     -----END RSA PRIVATE KEY-----
+     ```
+   - Click **Add secret**
+
+**Important**: Make sure to include the header (`-----BEGIN RSA PRIVATE KEY-----`) and footer (`-----END RSA PRIVATE KEY-----`) lines.
+
+### Optional: Repository Variables
+
+For non-sensitive configuration, you can use repository variables:
+
+Navigate to **Settings** → **Secrets and variables** → **Actions** → **Variables** tab
+
+| Variable Name | Description | Example Value |
+|---------------|-------------|---------------|
+| `OCI_REGION` | Default OCI region | `eu-frankfurt-1` |
+| `OCI_RESOURCE_PREFIX` | Default resource prefix | `ipcalc-prod` |
+
+---
+
+## Testing Your Setup
+
+### Test 1: Validate Configuration Locally (Optional)
+
+If you have OCI CLI installed locally:
+
+```bash
+# Create config file
+cat > ~/.oci/config << EOF
+[DEFAULT]
+user=<OCI_USER_OCID>
+fingerprint=<OCI_FINGERPRINT>
+tenancy=<OCI_TENANCY_OCID>
+region=eu-frankfurt-1
+key_file=~/.oci/oci_api_key.pem
+EOF
+
+# Test authentication
+oci iam region list
+
+# Test network permissions
+oci network vcn list --compartment-id <OCI_COMPARTMENT_OCID>
+```
+
+### Test 2: Run GitHub Workflow
+
+1. Go to your repository on GitHub
+2. Click **Actions** tab
+3. Select **Oracle Cloud VCN Deployment Test** workflow
+4. Click **Run workflow**
+5. Optionally customize parameters
+6. Click **Run workflow**
+
+The workflow will:
+1. Configure authentication using your secrets
+2. Generate Terraform configuration
+3. Deploy a VCN with subnets
+4. Validate the deployment
+5. Clean up all resources
+
+### Test 3: Verify Permissions
+
+Create a simple test workflow to verify your permissions:
 
 ```yaml
-name: Deploy to Oracle Cloud
+name: Test OCI Permissions
 
-on:
-  push:
-    branches: [main]
-
-permissions:
-  id-token: write  # Required for OIDC
-  contents: read
+on: workflow_dispatch
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Oracle Cloud using OIDC
-        id: oci-auth
+      - name: Configure OCI
         run: |
-          # Get GitHub OIDC token
-          OIDC_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.oracle.com" | jq -r '.value')
-
-          # Exchange for OCI security token
-          OCI_TOKEN_RESPONSE=$(curl -s -X POST \
-            "https://auth.${{ secrets.OCI_REGION }}.oraclecloud.com/v1/token" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"idToken\": \"$OIDC_TOKEN\",
-              \"idTokenProvider\": \"github\",
-              \"resourcePrincipalVersion\": \"2.2\"
-            }")
-
-          SECURITY_TOKEN=$(echo "$OCI_TOKEN_RESPONSE" | jq -r '.token')
-
-          # Configure OCI CLI
           mkdir -p ~/.oci
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem
           cat > ~/.oci/config << EOF
           [DEFAULT]
-          region=${{ secrets.OCI_REGION }}
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
           tenancy=${{ secrets.OCI_TENANCY_OCID }}
-          security_token_file=~/.oci/token
+          region=eu-frankfurt-1
+          key_file=~/.oci/key.pem
           EOF
-
-          echo "$SECURITY_TOKEN" > ~/.oci/token
 
       - name: Install OCI CLI
         run: |
           bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Test OCI Connection
+      - name: Test Network Access
         run: |
-          oci iam region list --output table
-```
+          export PATH="$HOME/bin:$PATH"
 
----
+          echo "Testing region list..."
+          oci iam region list
 
-## Testing Your Setup
+          echo "Testing VCN list..."
+          oci network vcn list --compartment-id ${{ secrets.OCI_COMPARTMENT_OCID }}
 
-### 1. Test OIDC Token Exchange Locally
-
-You can test the OIDC flow using curl:
-
-```bash
-# This will only work from a GitHub Actions runner
-curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-  "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.oracle.com"
-```
-
-### 2. Test with a Simple Workflow
-
-Create a test workflow:
-
-```yaml
-name: Test OCI OIDC
-
-on: workflow_dispatch
-
-permissions:
-  id-token: write
-  contents: read
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Get OIDC Token
-        run: |
-          TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.oracle.com" | jq -r '.value')
-
-          echo "Token received: ${TOKEN:0:20}..."
-
-          # Decode and display claims
-          echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .
-```
-
-### 3. Verify IAM Permissions
-
-Test that your dynamic group and policies work:
-
-```bash
-oci iam compartment list --compartment-id $OCI_TENANCY_OCID
+          echo "✅ All tests passed!"
 ```
 
 ---
@@ -317,45 +432,88 @@ oci iam compartment list --compartment-id $OCI_TENANCY_OCID
 
 ### Common Issues and Solutions
 
-#### Issue 1: "Invalid token" error
+#### Issue 1: "NotAuthenticated: Authentication failed"
 
-**Cause**: Token audience mismatch or expired token
+**Possible Causes:**
+- Incorrect user OCID
+- Wrong fingerprint
+- Private key doesn't match public key
+- Private key format issue
 
-**Solution**:
-- Ensure audience is set to `sts.oracle.com`
-- Check that tokens are used immediately after generation
-- Verify GitHub Actions has `id-token: write` permission
+**Solutions:**
+1. Verify user OCID is correct
+2. Re-check fingerprint in OCI console (user → API Keys)
+3. Ensure you uploaded the correct public key
+4. Regenerate key pair if needed
+5. Make sure private key includes header/footer lines
 
-#### Issue 2: "Unauthorized" when calling OCI APIs
+#### Issue 2: "Authorization failed or requested resource not found"
 
-**Cause**: IAM policy missing or incorrect dynamic group rules
+**Possible Causes:**
+- User lacks required permissions
+- Policy not applied to correct compartment
+- User not in the required group
+- Compartment OCID is wrong
 
-**Solution**:
-- Review dynamic group matching rules
-- Check policy statements match your compartment/resources
-- Verify tenancy OCID is correct
+**Solutions:**
+1. Verify user is member of correct group
+2. Check policy statements include correct compartment
+3. Verify compartment OCID
+4. Wait a few minutes for policy changes to propagate
+5. Check policy syntax:
+   ```
+   # Correct
+   Allow group GitHubActionsNetworkAdmins to manage virtual-network-family in compartment MyCompartment
 
-#### Issue 3: "Failed to get OIDC token"
+   # Incorrect (missing 'in')
+   Allow group GitHubActionsNetworkAdmins to manage virtual-network-family compartment MyCompartment
+   ```
 
-**Cause**: Missing GitHub Actions environment variables
+#### Issue 3: "Service error: InvalidParameter"
 
-**Solution**:
-- Ensure workflow has `permissions: id-token: write`
-- Check `ACTIONS_ID_TOKEN_REQUEST_TOKEN` and `ACTIONS_ID_TOKEN_REQUEST_URL` are available
-- This only works in GitHub Actions runners, not locally
+**Possible Causes:**
+- Invalid region name
+- Malformed OCID
+- Invalid CIDR block
 
-#### Issue 4: Token exchange fails
+**Solutions:**
+1. Verify region name (e.g., `eu-frankfurt-1`, not `eu-frankfurt`)
+2. Check all OCIDs are complete and properly formatted
+3. Validate CIDR blocks don't overlap with existing VCNs
 
-**Cause**: OCI region or authentication endpoint incorrect
+#### Issue 4: "Private key format error"
 
-**Solution**:
-- Verify the region in the auth URL: `https://auth.{region}.oraclecloud.com`
-- Check identity domain is properly configured
-- Ensure federation provider is active
+**Possible Causes:**
+- Missing newlines in private key
+- GitHub secret truncated
+- Extra spaces or characters
 
-### Debug Mode
+**Solutions:**
+1. When pasting private key to GitHub, ensure it's exactly as generated
+2. Use `cat` command to display key and copy-paste entire output
+3. Verify key format:
+   ```bash
+   # Valid private key should start with
+   -----BEGIN RSA PRIVATE KEY-----
+   # And end with
+   -----END RSA PRIVATE KEY-----
+   ```
 
-Enable debug output in your workflow:
+#### Issue 5: Rate limiting errors
+
+**Possible Causes:**
+- Too many API calls in short time
+- Workflow running too frequently
+
+**Solutions:**
+1. Add delays between API calls
+2. Use pagination for list operations
+3. Implement exponential backoff
+4. Consider OCI service limits
+
+### Enable Debug Logging
+
+Add to your workflow for detailed logs:
 
 ```yaml
 env:
@@ -363,127 +521,191 @@ env:
   ACTIONS_STEP_DEBUG: "true"
 ```
 
+### Verify API Key Configuration
+
+```bash
+# Check key format
+openssl rsa -in ~/.oci/oci_api_key.pem -check
+
+# Get fingerprint locally to compare
+openssl rsa -pubout -outform DER -in ~/.oci/oci_api_key.pem | openssl md5 -c
+```
+
 ---
 
 ## Additional Resources
 
-### Official Documentation
+### Official Oracle Documentation
 
-#### GitHub Actions OIDC
-- **GitHub Docs - About security hardening with OpenID Connect**
-  https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect
+#### OCI Authentication
+- **OCI Documentation - API Key Authentication**
+  https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm
 
-- **GitHub Docs - Configuring OpenID Connect in cloud providers**
-  https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-cloud-providers
+- **OCI Documentation - Required Keys and OCIDs**
+  https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm#Required_Keys_and_OCIDs
 
-- **GitHub Blog - Secure cloud deployments with OpenID Connect**
-  https://github.blog/changelog/2021-10-27-github-actions-secure-cloud-deployments-with-openid-connect/
+- **OCI Documentation - SDK and CLI Configuration**
+  https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm
 
-#### Oracle Cloud Infrastructure
-- **OCI Documentation - Federation**
-  https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/federating.htm
+#### IAM and Policies
+- **OCI Documentation - Policy Reference**
+  https://docs.oracle.com/en-us/iaas/Content/Identity/Reference/policyreference.htm
 
-- **OCI Documentation - Managing Identity Providers**
-  https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/federation.htm
+- **OCI Documentation - Common Policies**
+  https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm
 
-- **OCI Documentation - Resource Principal Authentication**
-  https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdk_authentication_methods.htm#sdk_authentication_methods_resource_principal
+- **OCI Documentation - Policy Syntax**
+  https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/policysyntax.htm
 
-- **OCI CLI Authentication Methods**
-  https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/clitoken.htm
+- **OCI Documentation - Network Policy Details**
+  https://docs.oracle.com/en-us/iaas/Content/Identity/Reference/corepolicyreference.htm
 
-- **OCI Terraform Provider - Authentication**
-  https://registry.terraform.io/providers/oracle/oci/latest/docs#authentication
+#### Networking
+- **OCI Documentation - VCN Overview**
+  https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/overview.htm
 
-#### Oracle Identity Cloud Service (IDCS)
-- **IDCS Documentation - OAuth and OpenID Connect**
-  https://docs.oracle.com/en/cloud/paas/identity-cloud/uaids/oauth-openid-connect.html
+- **OCI Documentation - VCN and Subnets**
+  https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingVCNs.htm
 
-- **IDCS Documentation - Configuring Federation**
-  https://docs.oracle.com/en/cloud/paas/identity-cloud/uaids/configure-federation.html
+- **OCI Documentation - Security Lists**
+  https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/securitylists.htm
 
-### Third-Party Resources & Tutorials
-
-#### Community Guides
-- **Medium - GitHub Actions OIDC with Oracle Cloud**
-  https://medium.com/oracledevs/github-actions-with-oci-using-oidc-authentication
-
-- **Oracle DevRel Blog - Secure CI/CD with OIDC**
-  https://blogs.oracle.com/developers/
-
-- **GitHub Actions Marketplace - OCI Actions**
-  https://github.com/marketplace?type=actions&query=oracle+cloud
-
-#### Video Tutorials
-- **Oracle Learning Library - OCI IAM and Federation**
-  https://www.oracle.com/goto/oll
-
-- **GitHub Actions OIDC Tutorial**
-  https://www.youtube.com/results?search_query=github+actions+oidc+tutorial
-
-#### Related Tools
-- **Terraform OCI Provider GitHub**
-  https://github.com/oracle/terraform-provider-oci
+#### CLI and Tools
+- **OCI CLI Documentation**
+  https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/
 
 - **OCI CLI GitHub Repository**
   https://github.com/oracle/oci-cli
 
-- **GitHub Actions Toolkit**
-  https://github.com/actions/toolkit
+- **OCI CLI Installation Guide**
+  https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm
 
-### Security Best Practices
+#### Terraform
+- **Terraform OCI Provider Documentation**
+  https://registry.terraform.io/providers/oracle/oci/latest/docs
 
+- **Terraform OCI Provider - Authentication**
+  https://registry.terraform.io/providers/oracle/oci/latest/docs#authentication
+
+- **OCI Terraform Examples**
+  https://github.com/oracle/terraform-provider-oci/tree/master/examples
+
+### GitHub Actions
+- **GitHub Docs - Encrypted Secrets**
+  https://docs.github.com/en/actions/security-guides/encrypted-secrets
+
+- **GitHub Docs - Using Secrets in Workflows**
+  https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions
+
+- **GitHub Docs - Security Hardening**
+  https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
+
+### Community Resources
+- **OCI Community Forums**
+  https://community.oracle.com/customerconnect/categories/oci
+
+- **Oracle DevRel Blog**
+  https://blogs.oracle.com/developers/
+
+- **Oracle Architecture Center**
+  https://docs.oracle.com/solutions/
+
+### Best Practices and Security
 - **CIS Oracle Cloud Infrastructure Foundations Benchmark**
   https://www.cisecurity.org/benchmark/oracle_cloud
 
-- **NIST Cybersecurity Framework**
-  https://www.nist.gov/cyberframework
+- **OCI Security Best Practices**
+  https://docs.oracle.com/en-us/iaas/Content/Security/Reference/configuration_security.htm
 
-- **OWASP Top 10 CI/CD Security Risks**
-  https://owasp.org/www-project-top-10-ci-cd-security-risks/
+- **OCI Well-Architected Framework**
+  https://docs.oracle.com/en-us/iaas/Content/cloud-adoption-framework/home.htm
 
-### Example Repositories
+### Video Tutorials
+- **Oracle Learning Library**
+  https://www.oracle.com/goto/oll
 
-- **Oracle QuickStart - Terraform Examples**
+- **OCI YouTube Channel**
+  https://www.youtube.com/c/OracleCloudInfrastructure
+
+### Example Code
+- **Oracle QuickStart GitHub**
   https://github.com/oracle-quickstart
 
-- **OCI Landing Zone**
+- **OCI Landing Zones**
   https://github.com/oracle-quickstart/oci-landing-zones
+
+- **OCI Terraform Modules**
+  https://github.com/oracle-terraform-modules
 
 ---
 
 ## Summary
 
-Setting up OIDC authentication between GitHub Actions and Oracle Cloud provides:
+This guide covered how to set up API key authentication for Oracle Cloud Infrastructure in GitHub Actions with network-only permissions.
 
-1. ✅ **Enhanced Security**: No long-lived credentials in your repository
-2. ✅ **Simplified Management**: Automatic token rotation
-3. ✅ **Better Compliance**: Audit trail and fine-grained access control
-4. ✅ **Cost Effective**: No additional services required
+### Key Steps Completed
 
-### Key Configuration Elements
+1. ✅ Created dedicated OCI user for GitHub Actions
+2. ✅ Generated and configured API key pair
+3. ✅ Created group with network-only permissions
+4. ✅ Configured restrictive IAM policies
+5. ✅ Set up GitHub repository secrets
+6. ✅ Tested the configuration
 
-| Component | Purpose |
-|-----------|---------|
-| Identity Provider | Establishes trust between GitHub and OCI |
-| Dynamic Group | Groups authenticated principals |
-| IAM Policy | Defines permissions for the dynamic group |
-| GitHub Secrets | Store OCI tenancy/compartment identifiers |
-| Workflow Permissions | Enable `id-token: write` for OIDC |
+### Security Best Practices Applied
+
+| Practice | Implementation |
+|----------|----------------|
+| Least Privilege | Network-only permissions via IAM policies |
+| Dedicated Service Account | Separate user for automation |
+| Secure Secret Storage | GitHub encrypted secrets |
+| Key Rotation | Regular API key regeneration |
+| Compartment Isolation | Resources in dedicated compartment |
+| Audit Trail | OCI audit logs track all API calls |
+
+### GitHub Secrets Summary
+
+| Secret | Contains |
+|--------|----------|
+| `OCI_USER_OCID` | User identifier |
+| `OCI_FINGERPRINT` | API key fingerprint |
+| `OCI_TENANCY_OCID` | Tenancy identifier |
+| `OCI_COMPARTMENT_OCID` | Target compartment |
+| `OCI_PRIVATE_KEY` | RSA private key (PEM format) |
+
+### Network Permissions Granted
+
+Using the recommended policy, the GitHub Actions user can:
+- ✅ Create, read, update, delete VCNs
+- ✅ Manage subnets and route tables
+- ✅ Configure security lists and NSGs
+- ✅ Manage internet, NAT, and service gateways
+- ❌ **Cannot** access compute instances
+- ❌ **Cannot** access storage or databases
+- ❌ **Cannot** modify IAM settings
+- ❌ **Cannot** access other compartments (unless explicitly granted)
 
 ---
 
-## Support and Contributions
+## Support and Maintenance
 
-If you encounter issues or have questions:
+### Regular Maintenance Tasks
 
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review Oracle Cloud [Service Limits](https://docs.oracle.com/en-us/iaas/Content/General/Concepts/servicelimits.htm)
-3. Consult the [OCI Community Forums](https://community.oracle.com/customerconnect/categories/oci)
-4. Open an issue in this repository
+1. **Rotate API keys** every 90 days
+2. **Review audit logs** monthly for unusual activity
+3. **Update policies** as requirements change
+4. **Test workflows** after making changes
+5. **Monitor OCI service limits**
+
+### Getting Help
+
+- **OCI Support**: Submit a ticket through OCI Console
+- **GitHub Support**: For Actions-related issues
+- **Community**: OCI forums and Stack Overflow
+- **Documentation**: Always refer to official OCI docs for latest information
 
 ---
 
-**Last Updated**: 2025-11-06
+**Last Updated**: 2025-11-16
 
-**Version**: 1.0.0
+**Version**: 2.0.0 (Updated from OIDC to API Key authentication)

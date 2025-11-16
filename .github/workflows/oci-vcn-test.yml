@@ -39,9 +39,7 @@ jobs:
     name: Deploy and Test with Terraform
     runs-on: ubuntu-latest
 
-    # Add these permissions for OIDC authentication
     permissions:
-      id-token: write
       contents: read
 
     steps:
@@ -70,56 +68,31 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Authenticate to Oracle Cloud using OIDC
+      - name: Configure Oracle Cloud Authentication
         id: oci-auth
         run: |
-          echo "🔐 Authenticating to Oracle Cloud using OIDC..."
+          echo "🔐 Configuring Oracle Cloud authentication..."
 
-          # Get GitHub OIDC token
-          OIDC_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.oracle.com" | jq -r '.value')
-
-          if [ -z "$OIDC_TOKEN" ]; then
-            echo "❌ Failed to get OIDC token"
-            exit 1
-          fi
-
-          # Exchange GitHub OIDC token for OCI security token
-          echo "Exchanging OIDC token for OCI security token..."
-          OCI_TOKEN_RESPONSE=$(curl -s -X POST \
-            "https://auth.${{ env.OCI_REGION }}.oraclecloud.com/v1/token" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"idToken\": \"$OIDC_TOKEN\",
-              \"idTokenProvider\": \"github\",
-              \"resourcePrincipalVersion\": \"2.2\"
-            }")
-
-          # Extract the security token
-          SECURITY_TOKEN=$(echo "$OCI_TOKEN_RESPONSE" | jq -r '.token')
-
-          if [ -z "$SECURITY_TOKEN" ] || [ "$SECURITY_TOKEN" = "null" ]; then
-            echo "❌ Failed to get OCI security token"
-            echo "Response: $OCI_TOKEN_RESPONSE"
-            exit 1
-          fi
-
-          # Configure OCI CLI
+          # Create OCI config directory
           mkdir -p ~/.oci
+
+          # Write the private key to file
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+
+          # Create OCI config file
           cat > ~/.oci/config << EOF
           [DEFAULT]
-          region=${{ env.OCI_REGION }}
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
           tenancy=${{ secrets.OCI_TENANCY_OCID }}
-          security_token_file=~/.oci/token
+          region=${{ env.OCI_REGION }}
+          key_file=~/.oci/oci_api_key.pem
           EOF
 
-          echo "$SECURITY_TOKEN" > ~/.oci/token
+          chmod 600 ~/.oci/config
 
-          # Set environment variables for Terraform
-          echo "TF_VAR_tenancy_ocid=${{ secrets.OCI_TENANCY_OCID }}" >> $GITHUB_ENV
-          echo "TF_VAR_region=${{ env.OCI_REGION }}" >> $GITHUB_ENV
-
-          echo "✅ OCI authentication completed successfully"
+          echo "✅ OCI authentication configured successfully"
 
       - name: Install and Setup OCI CLI
         run: |
@@ -176,7 +149,6 @@ jobs:
       - name: Plan Terraform Deployment
         working-directory: /tmp
         env:
-          OCI_CLI_AUTH: security_token
           OCI_CLI_CONFIG_FILE: ~/.oci/config
           OCI_CLI_PROFILE: DEFAULT
         run: |
@@ -191,7 +163,6 @@ jobs:
         id: deploy
         working-directory: /tmp
         env:
-          OCI_CLI_AUTH: security_token
           OCI_CLI_CONFIG_FILE: ~/.oci/config
           OCI_CLI_PROFILE: DEFAULT
         run: |
@@ -313,7 +284,6 @@ jobs:
         if: always()
         working-directory: /tmp
         env:
-          OCI_CLI_AUTH: security_token
           OCI_CLI_CONFIG_FILE: ~/.oci/config
           OCI_CLI_PROFILE: DEFAULT
         run: |
