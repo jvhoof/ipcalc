@@ -21,6 +21,8 @@
         :show-toolbar="true"
         :show-properties="true"
         @export="handleExport"
+        @import="handleImport"
+        @import-library="handleImportLibrary"
         @node-select="handleNodeSelect"
         @node-double-click="handleNodeDoubleClick"
       />
@@ -29,16 +31,16 @@
     <footer>
       <p>
         Click "Add" to add components | Drag to move | Connect nodes via green anchors |
-        Export to Draw.io, SVG, PNG, or JSON
+        Import Draw.io diagrams or shape libraries | Export to Draw.io, SVG, PNG, or JSON
       </p>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { CloudCanvas } from '../src'
-import type { Diagram, CloudProvider } from '../src'
+import type { Diagram, CloudProvider, ShapeLibrary } from '../src'
 
 const canvasRef = ref<InstanceType<typeof CloudCanvas> | null>(null)
 
@@ -173,6 +175,17 @@ function handleProviderChange(): void {
 
 function handleExport(format: string, content: string | Blob): void {
   console.log(`Exported to ${format}`)
+}
+
+function handleImport(importedDiagram: Diagram): void {
+  console.log('Imported diagram:', importedDiagram.name)
+  console.log(`  - ${importedDiagram.nodes.length} nodes`)
+  console.log(`  - ${importedDiagram.connections.length} connections`)
+}
+
+function handleImportLibrary(library: ShapeLibrary): void {
+  console.log('Imported shape library:', library.name)
+  console.log(`  - ${library.shapes.length} custom shapes`)
 }
 
 function handleNodeSelect(nodeIds: string[]): void {

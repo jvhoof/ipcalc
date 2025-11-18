@@ -8,6 +8,7 @@
       :can-undo="canUndo"
       :can-redo="canRedo"
       :zoom="canvasState.zoom"
+      :custom-libraries="customLibraries"
       @tool-select="currentTool = $event"
       @add-node="handleAddNode"
       @undo="undo"
@@ -16,6 +17,9 @@
       @zoom-out="zoomOut"
       @reset-view="resetView"
       @export="handleExport"
+      @import-diagram="handleImportDiagram"
+      @import-library="handleImportLibrary"
+      @import-json="handleImportJson"
       @toggle-grid="canvasState.showGrid = !canvasState.showGrid"
     />
 
@@ -137,9 +141,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, provide, onMounted, onUnmounted } from 'vue'
-import type { Diagram, DiagramNode, Position, AnchorPosition, CloudProvider, NodeType, ExportOptions } from '@/types'
+import type { Diagram, DiagramNode, Position, AnchorPosition, CloudProvider, NodeType, ExportOptions, ShapeLibrary } from '@/types'
 import { useDiagram } from '@/composables/useDiagram'
 import { useExport } from '@/composables/useExport'
+import { useImport } from '@/composables/useImport'
 import { getNodeDefinition } from '@/providers'
 import BaseNode from './nodes/BaseNode.vue'
 import ConnectionLine from './nodes/ConnectionLine.vue'
@@ -164,6 +169,8 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: Diagram): void
   (e: 'export', format: string, content: string | Blob): void
+  (e: 'import', diagram: Diagram): void
+  (e: 'import-library', library: ShapeLibrary): void
   (e: 'node-select', nodeIds: string[]): void
   (e: 'node-double-click', nodeId: string): void
 }>()
@@ -200,6 +207,15 @@ const {
 } = useDiagram(props.modelValue)
 
 const { exportDiagram, downloadFile } = useExport()
+
+const {
+  customLibraries,
+  importDiagramFromFile,
+  importLibraryFromFile,
+  importFromJson,
+  mergeDiagrams,
+  selectFile
+} = useImport()
 
 // Sync with v-model
 watch(diagram, (newDiagram) => {
@@ -448,6 +464,65 @@ async function handleExport(format: 'drawio' | 'svg' | 'png' | 'json'): Promise<
   downloadFile(content, filename)
 }
 
+// Handle import diagram
+async function handleImportDiagram(): Promise<void> {
+  try {
+    const imported = await importDiagramFromFile({ provider: diagram.value.provider })
+    if (imported) {
+      // Ask user if they want to replace or merge
+      const shouldMerge = diagram.value.nodes.length > 0
+
+      if (shouldMerge) {
+        // Merge with existing diagram
+        const merged = mergeDiagrams(diagram.value, imported)
+        diagram.value = merged
+      } else {
+        // Replace current diagram
+        diagram.value = imported
+      }
+
+      emit('import', diagram.value)
+    }
+  } catch (error) {
+    console.error('Failed to import diagram:', error)
+  }
+}
+
+// Handle import shape library
+async function handleImportLibrary(): Promise<void> {
+  try {
+    const library = await importLibraryFromFile()
+    if (library) {
+      emit('import-library', library)
+    }
+  } catch (error) {
+    console.error('Failed to import library:', error)
+  }
+}
+
+// Handle import from JSON
+async function handleImportJson(): Promise<void> {
+  try {
+    const file = await selectFile('.json')
+    if (file) {
+      const content = await file.text()
+      const imported = importFromJson(content)
+
+      // Merge or replace based on current state
+      if (diagram.value.nodes.length > 0) {
+        const merged = mergeDiagrams(diagram.value, imported)
+        diagram.value = merged
+      } else {
+        diagram.value = imported
+      }
+
+      emit('import', diagram.value)
+    }
+  } catch (error) {
+    console.error('Failed to import JSON:', error)
+  }
+}
+
 // Keyboard shortcuts
 function handleKeyDown(event: KeyboardEvent): void {
   if (props.readonly) return
@@ -502,7 +577,11 @@ defineExpose({
   clearSelection,
   undo,
   redo,
-  exportDiagram: handleExport
+  exportDiagram: handleExport,
+  importDiagram: handleImportDiagram,
+  importLibrary: handleImportLibrary,
+  importJson: handleImportJson,
+  customLibraries
 })
 </script>
 

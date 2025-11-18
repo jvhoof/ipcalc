@@ -107,6 +107,37 @@
 
     <div class="toolbar-spacer"></div>
 
+    <!-- Import dropdown -->
+    <div class="toolbar-group">
+      <div class="dropdown">
+        <button class="toolbar-btn dropdown-toggle" title="Import">
+          <span class="icon">↑</span>
+          <span class="label">Import</span>
+        </button>
+        <div class="dropdown-menu dropdown-menu-right">
+          <button class="dropdown-item" @click="$emit('import-diagram')">
+            Import Draw.io Diagram
+          </button>
+          <button class="dropdown-item" @click="$emit('import-library')">
+            Import Shape Library
+          </button>
+          <button class="dropdown-item" @click="$emit('import-json')">
+            Import from JSON
+          </button>
+          <div v-if="customLibraries.length > 0" class="dropdown-divider"></div>
+          <div v-if="customLibraries.length > 0" class="dropdown-header">Custom Libraries</div>
+          <div
+            v-for="library in customLibraries"
+            :key="library.id"
+            class="library-item"
+          >
+            <span class="library-name">{{ library.name }}</span>
+            <span class="library-count">{{ library.shapes.length }} shapes</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Export dropdown -->
     <div class="toolbar-group">
       <div class="dropdown">
@@ -135,7 +166,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { CloudProvider, ToolType, NodeType } from '@/types'
+import type { CloudProvider, ToolType, NodeType, ShapeLibrary } from '@/types'
 import { getProvider, getAllNodeDefinitions } from '@/providers'
 
 const props = defineProps<{
@@ -144,6 +175,7 @@ const props = defineProps<{
   canUndo: boolean
   canRedo: boolean
   zoom: number
+  customLibraries?: ShapeLibrary[]
 }>()
 
 defineEmits<{
@@ -156,7 +188,12 @@ defineEmits<{
   (e: 'reset-view'): void
   (e: 'toggle-grid'): void
   (e: 'export', format: 'drawio' | 'svg' | 'png' | 'json'): void
+  (e: 'import-diagram'): void
+  (e: 'import-library'): void
+  (e: 'import-json'): void
 }>()
+
+const customLibraries = computed(() => props.customLibraries || [])
 
 const providerConfig = computed(() => getProvider(props.provider))
 const providerName = computed(() => providerConfig.value.name)
@@ -325,5 +362,28 @@ function getIconSymbol(type: string): string {
 
 .node-icon {
   font-size: 14px;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 4px 0;
+}
+
+.library-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.library-name {
+  color: #333;
+}
+
+.library-count {
+  color: #999;
+  font-size: 11px;
 }
 </style>

@@ -223,3 +223,27 @@ export interface ProviderConfig {
     accent: string
   }
 }
+
+// Custom shape types
+export interface CustomShape {
+  id: string
+  name: string
+  style: string
+  width: number
+  height: number
+  icon?: string
+}
+
+export interface ShapeLibrary {
+  id: string
+  name: string
+  shapes: CustomShape[]
+}
+
+// Import options
+export interface ImportOptions {
+  provider?: CloudProvider
+  mergeWithCurrent?: boolean
+  offsetX?: number
+  offsetY?: number
+}

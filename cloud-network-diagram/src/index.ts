@@ -9,9 +9,13 @@ export { default as ConnectionLine } from './components/nodes/ConnectionLine.vue
 export { useDiagram } from './composables/useDiagram'
 export { useDragDrop, useCanvasPan, useCanvasZoom } from './composables/useDragDrop'
 export { useExport } from './composables/useExport'
+export { useImport } from './composables/useImport'
 
 // Exporters
 export { exportToDrawio } from './exporters/drawio'
+
+// Importers
+export { importFromDrawio, importShapeLibrary } from './importers/drawio'
 
 // Providers
 export {
@@ -50,8 +54,11 @@ export type {
   NodeResizeEvent,
   ConnectionEvent,
   ExportOptions,
+  ImportOptions,
   DrawioCell,
   CloudCanvasProps,
   NodeDefinition,
-  ProviderConfig
+  ProviderConfig,
+  CustomShape,
+  ShapeLibrary
 } from './types'
