@@ -1,4 +1,4 @@
-name: AWS VPC Deployment Test
+name: '[Network] AWS VPC Deployment Test'
 
 on:
   workflow_dispatch:  # Allow manual trigger with parameters

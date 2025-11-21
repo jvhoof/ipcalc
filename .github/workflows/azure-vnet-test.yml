@@ -1,4 +1,4 @@
-name: Azure VNET Deployment Test
+name: '[Network] Azure VNET Deployment Test'
 
 on:
   workflow_dispatch:  # Allow manual trigger with parameters
