@@ -4,17 +4,20 @@
   "description": "IP calculator application built with Vue.js and TypeScript",
   "main": "index.js",
   "bin": {
-    "ipcalc": "./bin/ipcalc.js"
+    "ipcalc": "./bin/ipcalc.js",
+    "ipcalc-mcp": "./bin/mcp-server.js"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
-    "cli": "tsx src/cli/index.ts"
+    "cli": "tsx src/cli/index.ts",
+    "mcp": "tsx src/mcp/server.ts"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
+    "@modelcontextprotocol/sdk": "^1.0.4",
     "@primevue/themes": "^4.4.0",
     "@vuebits/ui": "^0.6.0",
     "gsap": "^3.13.0",

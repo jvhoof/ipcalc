@@ -23,6 +23,12 @@ A comprehensive IP subnet calculator and Infrastructure-as-Code (IaC) generator 
 - **File Output**: Save generated code directly to files
 - **Scriptable**: Perfect for automation and testing workflows
 
+### MCP Server (Model Context Protocol)
+- **AI Assistant Integration**: Expose IP calculation tools to Claude and other AI assistants
+- **Three Powerful Tools**: Calculate subnets, generate IaC templates, list cloud providers
+- **Resource Access**: Query cloud provider configurations programmatically
+- **Standards-Based**: Implements the open Model Context Protocol specification
+
 ## Technology Stack
 
 - **Vue.js 3** - Progressive JavaScript framework
@@ -214,6 +220,45 @@ done
 
 For more detailed CLI documentation, see [CLI.md](CLI.md).
 
+## MCP Server Usage
+
+The ipcalc MCP server allows AI assistants like Claude to perform subnet calculations and generate Infrastructure-as-Code templates.
+
+### Quick Start
+
+Run the MCP server:
+```bash
+npm run mcp
+```
+
+Or if installed globally:
+```bash
+ipcalc-mcp
+```
+
+### Configuration for Claude Desktop
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "ipcalc": {
+      "command": "npx",
+      "args": ["-y", "ipcalc-mcp"]
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+1. **calculate_subnets** - Calculate subnet breakdown for a CIDR and cloud provider
+2. **generate_iac_template** - Generate Infrastructure-as-Code templates
+3. **list_cloud_providers** - List all supported cloud providers with configurations
+
+For complete MCP server documentation, see [MCP_SERVER.md](MCP_SERVER.md).
+
 ## Cloud Provider Details
 
 ### Azure
@@ -311,6 +356,8 @@ ipcalc/
 │   │   ├── index.ts              # CLI entry point
 │   │   ├── ipCalculator.ts       # Core IP calculation logic
 │   │   └── templateLoaderNode.ts # Node.js template loader
+│   ├── mcp/
+│   │   └── server.ts             # MCP server implementation
 │   ├── components/
 │   │   ├── AzureCalculator.vue   # Azure calculator component
 │   │   ├── AwsCalculator.vue     # AWS calculator component
@@ -332,7 +379,8 @@ ipcalc/
 │   ├── App.vue                   # Main application component
 │   └── main.ts                   # Application entry point
 ├── bin/
-│   └── ipcalc.js                 # CLI executable wrapper
+│   ├── ipcalc.js                 # CLI executable wrapper
+│   └── mcp-server.js             # MCP server executable wrapper
 ├── dist/                         # Production build output
 ├── index.html                    # HTML entry point
 ├── nginx.conf                    # NGINX configuration
@@ -340,7 +388,8 @@ ipcalc/
 ├── tsconfig.json                 # TypeScript configuration
 ├── vite.config.ts                # Vite build configuration
 ├── README.md                     # This file
-└── CLI.md                        # Detailed CLI documentation
+├── CLI.md                        # Detailed CLI documentation
+└── MCP_SERVER.md                 # MCP server documentation
 ```
 
 ## Scripts
@@ -350,6 +399,7 @@ ipcalc/
 - `npm run preview` - Preview production build locally
 - `npm run typecheck` - Run TypeScript type checking
 - `npm run cli` - Run CLI tool (add `-- --help` for CLI help)
+- `npm run mcp` - Run MCP server for AI assistant integration
 
 ## Development
 
@@ -383,5 +433,7 @@ MIT
 ## Support
 
 For detailed CLI documentation, see [CLI.md](CLI.md).
+
+For MCP server documentation, see [MCP_SERVER.md](MCP_SERVER.md).
 
 For issues and feature requests, please open an issue on GitHub.
