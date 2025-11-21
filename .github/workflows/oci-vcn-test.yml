@@ -21,7 +21,7 @@ on:
         default: '4'
   push:
     branches:
-      - beta  # Trigger on push to beta branch
+      - 'claude/oracle-cloud-oidc-action-011CUsQkEjG8X2CR1ZC9acn3'  # Trigger on push to beta branch
   pull_request:
     paths:
       - 'src/templates/oracle/**'
