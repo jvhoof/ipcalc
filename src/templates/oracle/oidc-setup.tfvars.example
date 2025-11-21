@@ -1,0 +1,28 @@
+# Example Terraform Variables for Oracle Cloud OIDC Setup
+# Copy this file to terraform.tfvars and update with your values
+
+# Required Variables
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+compartment_ocid = "ocid1.compartment.oc1..aaaaaaaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+github_org       = "your-github-org"
+
+# Repository-specific access (set github_repo and use_org_wide_access = false)
+github_repo          = "your-repo-name"
+use_org_wide_access  = false
+
+# Or, organization-wide access (set use_org_wide_access = true)
+# use_org_wide_access = true
+
+# Optional: Customize resource names
+# identity_provider_name = "GitHubActionsProvider"
+# dynamic_group_name     = "github-actions-dg"
+# policy_name            = "github-actions-policy"
+
+# Optional: Restrict to specific branch
+# restrict_to_branch = "refs/heads/main"
+
+# Optional: Add additional policy statements
+# additional_policy_statements = [
+#   "Allow dynamic-group github-actions-dg to manage object-family in compartment id ocid1.compartment.oc1..xxxx",
+#   "Allow dynamic-group github-actions-dg to use secret-family in compartment id ocid1.compartment.oc1..xxxx"
+# ]
