@@ -21,7 +21,7 @@ on:
         default: '4'
   push:
     branches:
-      - beta  # Trigger on push to beta branch
+      - main  # Trigger on push to beta branch
     paths-ignore:
       - '.github/workflows/**'
   pull_request:

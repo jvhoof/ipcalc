@@ -21,7 +21,9 @@ on:
         default: '4'
   push:
     branches:
-      - 'claude/oracle-cloud-oidc-action-011CUsQkEjG8X2CR1ZC9acn3'  # Trigger on push to beta branch
+      - main  # Trigger on push to main branch
+    paths-ignore:
+      - '.github/workflows/**'
   pull_request:
     paths:
       - 'src/templates/oracle/**'
