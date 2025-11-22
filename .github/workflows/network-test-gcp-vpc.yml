@@ -293,3 +293,374 @@ jobs:
           fi
 
           echo "✅ Cleanup completed"
+
+  # ========================================
+  # VPC Peering Tests (Hub-Spoke Topology)
+  # ========================================
+
+  deploy-peering-with-gcloud:
+    name: Deploy and Test VPC Peering with gcloud CLI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Generate gcloud CLI Script with VPC Peering
+        id: generate-script
+        run: |
+          echo "Generating gcloud CLI script with VPC peering using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: gcp"
+          echo "  Hub CIDR: 10.0.0.0/16"
+          echo "  Hub Subnets: 2"
+          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
+          echo "  Spoke Subnets: 2,2,2"
+
+          # Generate gcloud CLI script with VPC peering
+          npm run cli -- \
+            --provider gcp \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --output cli \
+            --file /tmp/deploy-vpc-peering-generated.sh
+
+          # Set unique names for this job
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          VPC_NAME="${JOB_PREFIX}-vpc"
+
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+
+          # Customize the script
+          sed -i "s/PROJECT_ID=\"your-project-id\"/PROJECT_ID=\"${{ secrets.GCP_PROJECT_ID }}\"/" /tmp/deploy-vpc-peering-generated.sh
+          sed -i "s/VPC_NAME=\"myproject-vpc\"/VPC_NAME=\"${VPC_NAME}\"/" /tmp/deploy-vpc-peering-generated.sh
+          chmod +x /tmp/deploy-vpc-peering-generated.sh
+
+          echo "Script contents:"
+          cat /tmp/deploy-vpc-peering-generated.sh
+
+      - name: Execute gcloud CLI Deployment
+        run: /tmp/deploy-vpc-peering-generated.sh
+
+      - name: Validate VPC Peering
+        run: |
+          echo "🔍 Validating VPC peering connections..."
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="hub-to-spoke${spoke_num}"
+            PEERING_STATUS=$(gcloud compute networks peerings list \
+              --network="${{ env.VPC_NAME }}" \
+              --format="value(state)" \
+              --filter="name=$PEERING_NAME" 2>/dev/null || echo "")
+
+            if [ "$PEERING_STATUS" != "ACTIVE" ]; then
+              echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is active"
+          done
+
+          echo "✅ All VPC peerings are active!"
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          echo "🧹 Cleaning up VPC peering resources..."
+
+          # Delete spoke VPCs (this will also delete peerings)
+          for spoke_num in 1 2 3; do
+            SPOKE_VPC="${{ env.VPC_NAME }}-spoke${spoke_num}"
+            echo "Deleting spoke VPC: $SPOKE_VPC"
+
+            # Delete firewall rules first
+            FIREWALL_RULES=$(gcloud compute firewall-rules list \
+              --filter="network:$SPOKE_VPC" \
+              --format="value(name)" 2>/dev/null || echo "")
+
+            for fw_rule in $FIREWALL_RULES; do
+              echo "Deleting firewall rule: $fw_rule"
+              gcloud compute firewall-rules delete "$fw_rule" --quiet || true
+            done
+
+            # Delete subnets
+            SUBNETS=$(gcloud compute networks subnets list \
+              --network="$SPOKE_VPC" \
+              --format="value(name,region)" 2>/dev/null || echo "")
+
+            echo "$SUBNETS" | while read -r subnet region; do
+              if [ -n "$subnet" ] && [ -n "$region" ]; then
+                echo "Deleting subnet: $subnet in region $region"
+                gcloud compute networks subnets delete "$subnet" \
+                  --region="$region" --quiet || true
+              fi
+            done
+
+            # Delete spoke VPC
+            gcloud compute networks delete "$SPOKE_VPC" --quiet || true
+          done
+
+          # Delete hub VPC
+          echo "Deleting hub VPC: ${{ env.VPC_NAME }}"
+
+          # Delete firewall rules
+          FIREWALL_RULES=$(gcloud compute firewall-rules list \
+            --filter="network:${{ env.VPC_NAME }}" \
+            --format="value(name)" 2>/dev/null || echo "")
+
+          for fw_rule in $FIREWALL_RULES; do
+            echo "Deleting firewall rule: $fw_rule"
+            gcloud compute firewall-rules delete "$fw_rule" --quiet || true
+          done
+
+          # Delete subnets
+          SUBNETS=$(gcloud compute networks subnets list \
+            --network="${{ env.VPC_NAME }}" \
+            --format="value(name,region)" 2>/dev/null || echo "")
+
+          echo "$SUBNETS" | while read -r subnet region; do
+            if [ -n "$subnet" ] && [ -n "$region" ]; then
+              echo "Deleting subnet: $subnet in region $region"
+              gcloud compute networks subnets delete "$subnet" \
+                --region="$region" --quiet || true
+            fi
+          done
+
+          # Delete hub VPC
+          gcloud compute networks delete "${{ env.VPC_NAME }}" --quiet || true
+
+          echo "✅ Cleanup completed"
+
+  deploy-peering-with-terraform:
+    name: Deploy and Test VPC Peering with Terraform
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Generate Terraform Configuration with VPC Peering
+        id: generate-terraform
+        run: |
+          echo "Generating Terraform configuration with VPC peering using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: gcp"
+          echo "  Hub CIDR: 10.0.0.0/16"
+          echo "  Hub Subnets: 2"
+          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
+          echo "  Spoke Subnets: 2,2,2"
+
+          # Set unique names for this job
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          VPC_NAME="${JOB_PREFIX}-vpc"
+
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+
+          # Generate Terraform configuration with VPC peering
+          npm run cli -- \
+            --provider gcp \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --output terraform \
+            --file /tmp/test-terraform-peering.tf
+
+          echo "Terraform configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-terraform-peering.tf
+
+      - name: Initialize Terraform
+        working-directory: /tmp
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+      - name: Validate Terraform Configuration
+        working-directory: /tmp
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Plan Terraform Deployment
+        working-directory: /tmp
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan \
+            -var "project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}" \
+            -out=tfplan
+
+      - name: Apply Terraform Deployment
+        id: deploy
+        working-directory: /tmp
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+          echo "✅ Deployment completed successfully"
+
+      - name: Validate VPC Peering
+        run: |
+          echo "🔍 Validating VPC peering connections..."
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="hub-to-spoke${spoke_num}"
+            PEERING_STATUS=$(gcloud compute networks peerings list \
+              --network="${{ env.VPC_NAME }}" \
+              --format="value(state)" \
+              --filter="name=$PEERING_NAME" 2>/dev/null || echo "")
+
+            if [ "$PEERING_STATUS" != "ACTIVE" ]; then
+              echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is active"
+          done
+
+          echo "✅ All VPC peerings are active!"
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        run: |
+          echo "🧹 Cleaning up resources..."
+
+          # Try to destroy using Terraform first
+          echo "Attempting to destroy resources using Terraform..."
+          if terraform destroy -auto-approve \
+            -var "project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}"; then
+            echo "✅ Terraform destroy completed successfully"
+          else
+            echo "⚠️ Terraform destroy failed, attempting manual cleanup..."
+
+            # Delete spoke VPCs
+            for spoke_num in 1 2 3; do
+              SPOKE_VPC="${{ env.VPC_NAME }}-spoke${spoke_num}"
+              echo "Deleting spoke VPC: $SPOKE_VPC"
+
+              # Delete firewall rules
+              FIREWALL_RULES=$(gcloud compute firewall-rules list \
+                --filter="network:$SPOKE_VPC" \
+                --format="value(name)" 2>/dev/null || echo "")
+
+              for fw_rule in $FIREWALL_RULES; do
+                echo "Deleting firewall rule: $fw_rule"
+                gcloud compute firewall-rules delete "$fw_rule" --quiet || true
+              done
+
+              # Delete subnets
+              SUBNETS=$(gcloud compute networks subnets list \
+                --network="$SPOKE_VPC" \
+                --format="value(name,region)" 2>/dev/null || echo "")
+
+              echo "$SUBNETS" | while read -r subnet region; do
+                if [ -n "$subnet" ] && [ -n "$region" ]; then
+                  echo "Deleting subnet: $subnet in region $region"
+                  gcloud compute networks subnets delete "$subnet" \
+                    --region="$region" --quiet || true
+                fi
+              done
+
+              # Delete spoke VPC
+              gcloud compute networks delete "$SPOKE_VPC" --quiet || true
+            done
+
+            # Delete hub VPC
+            if [ -n "${{ env.VPC_NAME }}" ]; then
+              # Delete firewall rules
+              FIREWALL_RULES=$(gcloud compute firewall-rules list \
+                --filter="network:${{ env.VPC_NAME }}" \
+                --format="value(name)" 2>/dev/null || echo "")
+
+              for fw_rule in $FIREWALL_RULES; do
+                echo "Deleting firewall rule: $fw_rule"
+                gcloud compute firewall-rules delete "$fw_rule" --quiet || true
+              done
+
+              # Delete subnets
+              SUBNETS=$(gcloud compute networks subnets list \
+                --network="${{ env.VPC_NAME }}" \
+                --format="value(name,region)" 2>/dev/null || echo "")
+
+              echo "$SUBNETS" | while read -r subnet region; do
+                if [ -n "$subnet" ] && [ -n "$region" ]; then
+                  echo "Deleting subnet: $subnet in region $region"
+                  gcloud compute networks subnets delete "$subnet" \
+                    --region="$region" --quiet || true
+                fi
+              done
+
+              # Delete hub VPC
+              gcloud compute networks delete "${{ env.VPC_NAME }}" --quiet || true
+            fi
+
+            echo "✅ Manual cleanup completed"
+          fi
+
+          echo "✅ Cleanup completed"

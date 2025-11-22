@@ -8,33 +8,47 @@
 PROJECT_ID="your-project-id"
 VPC_NAME="myproject-vpc"
 ROUTING_MODE="regional"  # or "global"
+{{spokeVPCVariables}}
 
 # Set the project
 gcloud config set project "${PROJECT_ID}"
 
 # ========================================
-# Create VPC (auto mode disabled)
+# Create Hub VPC (auto mode disabled)
 # ========================================
-echo "Creating VPC..."
+echo "Creating Hub VPC..."
 gcloud compute networks create "${VPC_NAME}" \
   --subnet-mode=custom \
   --bgp-routing-mode=${ROUTING_MODE} \
   --mtu=1460
 
-echo "VPC ${VPC_NAME} created successfully"
+echo "Hub VPC ${VPC_NAME} created successfully"
 
 # ========================================
-# Create Subnets
+# Create Hub Subnets
 # ========================================
 {{subnetCreation}}
+
+# ========================================
+# Create Spoke VPCs and Subnets
+# ========================================
+{{spokeVPCCreation}}
+
+# ========================================
+# Create VPC Peerings
+# ========================================
+{{spokePeeringCreation}}
 
 echo "GCP VPC and Subnets created successfully!"
 
 # ========================================
 # Display VPC and Subnets
 # ========================================
-echo "VPC Details:"
+echo "Hub VPC Details:"
 gcloud compute networks describe "${VPC_NAME}"
 
-echo "Subnet Details:"
+echo "Hub Subnet Details:"
 gcloud compute networks subnets list --network="${VPC_NAME}"
+
+echo "VPC Peerings:"
+gcloud compute networks peerings list --network="${VPC_NAME}"

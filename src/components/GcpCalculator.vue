@@ -95,6 +95,148 @@
         </v-expansion-panel>
       </v-expansion-panels>
 
+      <!-- VPC Peering Configuration -->
+      <v-expansion-panels class="mt-4 mb-4" :style="{ backgroundColor: mainPanelBgColor }">
+        <v-expansion-panel :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+          <v-expansion-panel-title class="text-body-2" :style="{ color: mainPanelTextColor }">
+            <div class="d-flex align-center justify-space-between" style="width: 100%;">
+              <div class="d-flex align-center">
+                <v-icon class="mr-2" size="small">mdi-connection</v-icon>
+                <span>VPC Peering (Hub-Spoke Topology)</span>
+              </div>
+              <v-switch
+                v-model="peeringEnabled"
+                color="primary"
+                density="compact"
+                @update:model-value="onPeeringToggle"
+                hide-details
+                class="mr-4"
+                @click.stop
+              ></v-switch>
+            </div>
+          </v-expansion-panel-title>
+          <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+
+            <div v-if="peeringEnabled">
+              <!-- Title and Number of Spoke VPCs on same row -->
+              <v-row class="mb-3 align-center">
+                <v-col cols="12" md="8">
+                  <div class="text-subtitle-2 font-weight-bold">Configure Spoke VPCs</div>
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field
+                    v-model.number="numberOfSpokeVPCs"
+                    label="Number of Spoke VPCs"
+                    type="number"
+                    min="1"
+                    max="10"
+                    variant="outlined"
+                    @input="updateSpokeVPCs"
+                    density="compact"
+                    hint="Max 10"
+                    persistent-hint
+                  ></v-text-field>
+                </v-col>
+              </v-row>
+
+              <!-- Spoke VPC Configurations -->
+              <v-expansion-panels v-if="spokeVPCs.length > 0" class="mt-4" multiple>
+                <v-expansion-panel
+                  v-for="(spoke, index) in spokeVPCs"
+                  :key="index"
+                  :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }"
+                >
+                  <v-expansion-panel-title :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
+                    <div class="d-flex align-center">
+                      <v-icon class="mr-2">mdi-network-outline</v-icon>
+                      <span class="font-weight-bold">Spoke VPC {{ index + 1 }}: {{ spoke.cidr || 'Not configured' }}</span>
+                    </div>
+                  </v-expansion-panel-title>
+                  <v-expansion-panel-text :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
+                    <v-row>
+                      <v-col cols="12" md="8">
+                        <v-text-field
+                          v-model="spoke.cidr"
+                          label="Spoke VPC CIDR Block"
+                          placeholder="10.1.0.0/16"
+                          variant="outlined"
+                          @input="() => calculateSpokeSubnets(index)"
+                          density="comfortable"
+                          hint="Enter the spoke VPC address space"
+                          persistent-hint
+                        >
+                          <template v-slot:append>
+                            <v-btn
+                              icon="mdi-chevron-left"
+                              size="small"
+                              variant="text"
+                              @click="decrementSpokeCIDR(index)"
+                            ></v-btn>
+                            <v-btn
+                              icon="mdi-chevron-right"
+                              size="small"
+                              variant="text"
+                              @click="incrementSpokeCIDR(index)"
+                            ></v-btn>
+                          </template>
+                        </v-text-field>
+                      </v-col>
+                      <v-col cols="12" md="4">
+                        <v-text-field
+                          v-model.number="spoke.numberOfSubnets"
+                          label="Number of Subnets"
+                          type="number"
+                          min="1"
+                          max="256"
+                          variant="outlined"
+                          @input="() => calculateSpokeSubnets(index)"
+                          density="comfortable"
+                        ></v-text-field>
+                      </v-col>
+                    </v-row>
+
+                    <!-- Spoke VPC Info -->
+                    <v-card v-if="spoke.vpcInfo" class="mt-2" variant="outlined" :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+                      <v-card-text :style="{ color: mainPanelTextColor }">
+                        <v-list density="compact" :style="{ backgroundColor: 'transparent', color: mainPanelTextColor }">
+                          <v-list-item>
+                            <v-list-item-title>Spoke VPC Address Space</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.vpcInfo.network }}</v-list-item-subtitle>
+                          </v-list-item>
+                          <v-list-item>
+                            <v-list-item-title>Total IP Addresses</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.vpcInfo.totalIPs.toLocaleString() }}</v-list-item-subtitle>
+                          </v-list-item>
+                          <v-list-item>
+                            <v-list-item-title>Subnets Created</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.subnets?.length || 0 }}</v-list-item-subtitle>
+                          </v-list-item>
+                        </v-list>
+                      </v-card-text>
+                    </v-card>
+
+                    <!-- Error Message for Spoke -->
+                    <v-alert v-if="spoke.error" type="error" class="mt-2" density="compact">
+                      {{ spoke.error }}
+                    </v-alert>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
+
+              <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start">
+                <div class="text-caption">
+                  <strong>Hub-Spoke Topology:</strong><br>
+                  • The main VPC acts as the hub, connecting to multiple spoke VPCs via peering<br>
+                  • Spoke VPCs should use non-overlapping CIDR blocks<br>
+                  • Each peering connection allows bi-directional traffic between hub and spoke<br>
+                  • GCP automatically creates routes for peered VPCs
+                </div>
+              </v-alert>
+            </div>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
+
       <!-- VPC Summary -->
       <v-card v-if="vpcInfo" class="mt-4" variant="outlined" :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
         <v-card-title class="text-h6" :style="themeStyles.vpcInfoHeader">VPC Information</v-card-title>
@@ -325,6 +467,14 @@ interface Subnet {
   region: string
 }
 
+interface SpokeVPC {
+  cidr: string
+  numberOfSubnets: number
+  vpcInfo: VPCInfo | null
+  subnets: Subnet[]
+  error: string
+}
+
 const vpcCidr = ref<string>(gcpConfig.defaultCidr)
 const numberOfSubnets = ref<number>(gcpConfig.defaultSubnetCount)
 const desiredSubnetPrefix = ref<number | null>(null)
@@ -334,6 +484,11 @@ const errorMessage = ref<string>('')
 const showCodeDialog = ref<boolean>(false)
 const generatedCode = ref<string>('')
 const codeDialogTitle = ref<string>('')
+
+// VPC Peering state
+const peeringEnabled = ref<boolean>(false)
+const numberOfSpokeVPCs = ref<number>(2)
+const spokeVPCs = ref<SpokeVPC[]>([])
 
 const regions = gcpConfig.availabilityZones
 
@@ -539,7 +694,9 @@ const generateGcloudCLI = async (): Promise<void> => {
 
   const code = await loadGCPGcloudTemplate({
     vnetCidr: vpcCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    peeringEnabled: peeringEnabled.value,
+    spokeVPCs: spokeVPCs.value
   })
 
   generatedCode.value = code
@@ -552,7 +709,9 @@ const generateTerraform = async (): Promise<void> => {
 
   const code = await loadGCPTerraformTemplate({
     vnetCidr: vpcCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    peeringEnabled: peeringEnabled.value,
+    spokeVPCs: spokeVPCs.value
   })
 
   generatedCode.value = code
@@ -590,6 +749,184 @@ const resetToDefaultSubnetPrefix = (): void => {
   if (defaultPrefix !== null) {
     desiredSubnetPrefix.value = defaultPrefix
     calculateVPC()
+  }
+}
+
+// VPC Peering functions
+const onPeeringToggle = (): void => {
+  if (peeringEnabled.value) {
+    // Initialize spoke VPCs when peering is enabled
+    updateSpokeVPCs()
+  } else {
+    // Clear spoke VPCs when peering is disabled
+    spokeVPCs.value = []
+  }
+}
+
+const updateSpokeVPCs = (): void => {
+  const currentCount = spokeVPCs.value.length
+  const targetCount = Math.min(Math.max(1, numberOfSpokeVPCs.value || 1), 10)
+  numberOfSpokeVPCs.value = targetCount
+
+  if (targetCount > currentCount) {
+    // Add new spoke VPCs
+    for (let i = currentCount; i < targetCount; i++) {
+      // Generate a default CIDR for the spoke (different from hub)
+      const baseOctet = 10 + i + 1 // Start from 10.1.0.0, 10.2.0.0, etc.
+      spokeVPCs.value.push({
+        cidr: `${baseOctet}.0.0.0/16`,
+        numberOfSubnets: 2,
+        vpcInfo: null,
+        subnets: [],
+        error: ''
+      })
+    }
+  } else if (targetCount < currentCount) {
+    // Remove excess spoke VPCs
+    spokeVPCs.value = spokeVPCs.value.slice(0, targetCount)
+  }
+
+  // Calculate all spoke VPCs
+  calculateSpokeVPCs()
+}
+
+const calculateSpokeVPCs = (): void => {
+  if (!peeringEnabled.value) {
+    return
+  }
+
+  // Calculate each spoke VPC
+  spokeVPCs.value.forEach((_, index) => {
+    calculateSpokeSubnets(index)
+  })
+}
+
+const calculateSpokeSubnets = (index: number): void => {
+  const spoke = spokeVPCs.value[index]
+  if (!spoke) return
+
+  spoke.error = ''
+  spoke.vpcInfo = null
+  spoke.subnets = []
+
+  if (!spoke.cidr) {
+    return
+  }
+
+  try {
+    const parsed = parseCIDR(spoke.cidr)
+    if (!parsed) {
+      spoke.error = 'Invalid CIDR notation. Use format: 10.1.0.0/16'
+      return
+    }
+
+    const { ip, prefix } = parsed
+
+    // Calculate VPC info
+    const networkNum = ipToNumber(ip) & (0xFFFFFFFF << (32 - prefix))
+    const networkIP = numberToIP(networkNum)
+    const totalIPs = Math.pow(2, 32 - prefix)
+    const lastIPNum = networkNum + totalIPs - 1
+    const lastIP = numberToIP(lastIPNum)
+
+    spoke.vpcInfo = {
+      network: networkIP.join('.'),
+      totalIPs: totalIPs,
+      firstIP: networkIP.join('.'),
+      lastIP: lastIP.join('.')
+    }
+
+    // Calculate subnets
+    if (spoke.numberOfSubnets < 1 || spoke.numberOfSubnets > 256) {
+      spoke.error = 'Number of subnets must be between 1 and 256'
+      return
+    }
+
+    // Calculate required prefix length for subnets
+    const bitsNeeded = Math.ceil(Math.log2(spoke.numberOfSubnets))
+    const subnetPrefix = prefix + bitsNeeded
+
+    // Check against GCP minimum
+    if (subnetPrefix > gcpConfig.minCidrPrefix) {
+      spoke.error = `Cannot divide /${prefix} into ${spoke.numberOfSubnets} subnets. Each subnet would be smaller than /${gcpConfig.minCidrPrefix} (GCP minimum).`
+      return
+    }
+
+    if (subnetPrefix > 32) {
+      spoke.error = `Cannot divide /${prefix} into ${spoke.numberOfSubnets} subnets. Not enough address space.`
+      return
+    }
+
+    // Calculate subnets
+    const subnetSize = Math.pow(2, 32 - subnetPrefix)
+    const actualNumberOfSubnets = Math.min(spoke.numberOfSubnets, Math.floor(totalIPs / subnetSize))
+
+    for (let i = 0; i < actualNumberOfSubnets; i++) {
+      const subnetNetworkNum = networkNum + (i * subnetSize)
+      const subnetNetwork = numberToIP(subnetNetworkNum)
+      const subnetMask = cidrToMask(subnetPrefix)
+
+      // GCP reserves: first 2 IPs and last 2 IPs
+      const reserved: string[] = [
+        numberToIP(subnetNetworkNum).join('.'),           // x.x.x.0 - Network address
+        numberToIP(subnetNetworkNum + 1).join('.'),       // x.x.x.1 - Default gateway
+        numberToIP(subnetNetworkNum + subnetSize - 2).join('.'), // x.x.x.254 - Second-to-last (reserved)
+        numberToIP(subnetNetworkNum + subnetSize - 1).join('.') // x.x.x.255 - Broadcast
+      ]
+
+      const usableIPs = subnetSize - gcpConfig.reservedIpCount
+      const firstUsable = numberToIP(subnetNetworkNum + 2).join('.')
+      const lastUsable = numberToIP(subnetNetworkNum + subnetSize - 3).join('.')
+
+      spoke.subnets.push({
+        network: subnetNetwork.join('.'),
+        cidr: `${subnetNetwork.join('.')}/${subnetPrefix}`,
+        mask: subnetMask.join('.'),
+        totalIPs: subnetSize,
+        usableIPs: usableIPs,
+        reserved: reserved,
+        usableRange: `${firstUsable} - ${lastUsable}`,
+        region: regions[i % regions.length]
+      })
+    }
+  } catch (error) {
+    spoke.error = 'Error calculating spoke subnets. Please check your input.'
+    console.error(error)
+  }
+}
+
+const getCurrentSpokeCIDR = (index: number): number | null => {
+  const spoke = spokeVPCs.value[index]
+  if (!spoke) return null
+
+  const parts = spoke.cidr.split('/')
+  if (parts.length !== 2) return null
+
+  const cidr = parseInt(parts[1], 10)
+  return isNaN(cidr) ? null : cidr
+}
+
+const incrementSpokeCIDR = (index: number): void => {
+  const spoke = spokeVPCs.value[index]
+  if (!spoke) return
+
+  const cidr = getCurrentSpokeCIDR(index)
+  if (cidr !== null && cidr < gcpConfig.minCidrPrefix) {
+    const parts = spoke.cidr.split('/')
+    spoke.cidr = `${parts[0]}/${cidr + 1}`
+    calculateSpokeSubnets(index)
+  }
+}
+
+const decrementSpokeCIDR = (index: number): void => {
+  const spoke = spokeVPCs.value[index]
+  if (!spoke) return
+
+  const cidr = getCurrentSpokeCIDR(index)
+  if (cidr !== null && cidr > gcpConfig.maxCidrPrefix) {
+    const parts = spoke.cidr.split('/')
+    spoke.cidr = `${parts[0]}/${cidr - 1}`
+    calculateSpokeSubnets(index)
   }
 }
 
