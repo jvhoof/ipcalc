@@ -311,7 +311,7 @@
                 </div>
                 <v-switch
                   v-model="peeringEnabled"
-                  color="primary"
+                  :color="themeStyles.button.backgroundColor"
                   density="compact"
                   @update:model-value="onPeeringToggle"
                   hide-details
@@ -846,6 +846,19 @@ const onPeeringToggle = (): void => {
   }
 }
 
+const getNextCIDRBlock = (cidr: string, offset: number = 1): string => {
+  const parsed = parseCIDR(cidr)
+  if (!parsed) return cidr
+
+  const { ip, prefix } = parsed
+  const networkNum = ipToNumber(ip) & (0xFFFFFFFF << (32 - prefix))
+  const blockSize = Math.pow(2, 32 - prefix)
+  const nextNetworkNum = networkNum + (blockSize * offset)
+  const nextIP = numberToIP(nextNetworkNum)
+
+  return `${nextIP.join('.')}/${prefix}`
+}
+
 const updateSpokeVNets = (): void => {
   const currentCount = spokeVNets.value.length
   const targetCount = Math.min(Math.max(1, numberOfSpokeVNets.value || 1), 10)
@@ -854,10 +867,17 @@ const updateSpokeVNets = (): void => {
   if (targetCount > currentCount) {
     // Add new spoke VNETs
     for (let i = currentCount; i < targetCount; i++) {
-      // Generate a default CIDR for the spoke (different from hub)
-      const baseOctet = 10 + i + 1 // Start from 10.1.0.0, 10.2.0.0, etc.
+      // Generate a default CIDR for the spoke that continues from the hub VNET
+      let spokeCidr = '10.1.0.0/16' // Default fallback
+
+      if (vnetCidr.value) {
+        // Generate spoke CIDR based on hub VNET
+        // For spoke index i, we want the (i+1)th network after the hub
+        spokeCidr = getNextCIDRBlock(vnetCidr.value, i + 1)
+      }
+
       spokeVNets.value.push({
-        cidr: `${baseOctet}.0.0.0/16`,
+        cidr: spokeCidr,
         numberOfSubnets: 2,
         vnetInfo: null,
         subnets: [],
