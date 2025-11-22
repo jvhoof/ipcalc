@@ -3,7 +3,7 @@
     <v-main class="d-flex align-center" style="position: relative; z-index: 1; padding-bottom: 80px; transition: background-color 0.5s ease;">
       <v-container>
         <v-row justify="center">
-          <v-col cols="12" md="8" lg="6">
+          <v-col cols="12" md="9" lg="7">
             <h1 class="responsive-title text-center font-weight-bold mb-8" :style="{ fontFamily: 'Roboto, sans-serif', color: currentTitleColor, transition: 'color 0.5s ease' }">
               IP CALCULATOR
             </h1>
