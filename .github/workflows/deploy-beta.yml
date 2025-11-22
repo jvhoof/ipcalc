@@ -6,11 +6,6 @@ on:
       - beta  # Trigger on push to main branch
     paths-ignore:
       - '.github/workflows/*.yml'
-  pull_request:
-    branches:
-      - beta
-    paths-ignore:
-      - '.github/workflows/*.yml'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
