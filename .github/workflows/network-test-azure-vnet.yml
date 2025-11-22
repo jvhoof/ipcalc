@@ -906,6 +906,8 @@ jobs:
   deploy-peering-with-azure-cli:
     name: Deploy and Test VNET Peering with Azure CLI
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Generate Unique Identifier
