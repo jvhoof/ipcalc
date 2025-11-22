@@ -303,27 +303,33 @@
       <v-expansion-panels class="mt-4 mb-4" :style="{ backgroundColor: mainPanelBgColor }">
         <v-expansion-panel :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
           <v-expansion-panel-title class="text-body-2" :style="{ color: mainPanelTextColor }">
-            <v-icon class="mr-2" size="small">mdi-connection</v-icon>
-            <span>VNET Peering (Hub-Spoke Topology)</span>
+            <template v-slot:default="{ expanded }">
+              <div class="d-flex align-center justify-space-between" style="width: 100%;">
+                <div class="d-flex align-center">
+                  <v-icon class="mr-2" size="small">mdi-connection</v-icon>
+                  <span>VNET Peering (Hub-Spoke Topology)</span>
+                </div>
+                <v-switch
+                  v-model="peeringEnabled"
+                  color="primary"
+                  density="compact"
+                  @update:model-value="onPeeringToggle"
+                  hide-details
+                  class="mr-4"
+                  @click.stop
+                ></v-switch>
+              </div>
+            </template>
           </v-expansion-panel-title>
           <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
-            <div class="text-subtitle-2 font-weight-bold mb-3">Configure Spoke VNETs</div>
-
-            <!-- Enable/Disable Peering -->
-            <v-switch
-              v-model="peeringEnabled"
-              label="Enable VNET Peering"
-              color="primary"
-              density="compact"
-              @update:model-value="calculateSpokeVNets"
-              hide-details
-              class="mb-4"
-            ></v-switch>
 
             <div v-if="peeringEnabled">
-              <!-- Number of Spoke VNETs -->
-              <v-row>
-                <v-col cols="12" md="6">
+              <!-- Title and Number of Spoke VNETs on same row -->
+              <v-row class="mb-3 align-center">
+                <v-col cols="12" md="8">
+                  <div class="text-subtitle-2 font-weight-bold">Configure Spoke VNETs</div>
+                </v-col>
+                <v-col cols="12" md="4">
                   <v-text-field
                     v-model.number="numberOfSpokeVNets"
                     label="Number of Spoke VNETs"
@@ -332,8 +338,8 @@
                     max="10"
                     variant="outlined"
                     @input="updateSpokeVNets"
-                    density="comfortable"
-                    hint="Maximum 10 spoke VNETs"
+                    density="compact"
+                    hint="Max 10"
                     persistent-hint
                   ></v-text-field>
                 </v-col>
@@ -510,7 +516,7 @@ const codeDialogTitle = ref<string>('')
 
 // VNET Peering state
 const peeringEnabled = ref<boolean>(false)
-const numberOfSpokeVNets = ref<number>(1)
+const numberOfSpokeVNets = ref<number>(2)
 const spokeVNets = ref<SpokeVNet[]>([])
 
 const parseIP = (ip: string): number[] | null => {
@@ -830,6 +836,16 @@ const handleKeydown = (event: KeyboardEvent): void => {
 }
 
 // VNET Peering functions
+const onPeeringToggle = (): void => {
+  if (peeringEnabled.value) {
+    // Initialize spoke VNETs when peering is enabled
+    updateSpokeVNets()
+  } else {
+    // Clear spoke VNETs when peering is disabled
+    spokeVNets.value = []
+  }
+}
+
 const updateSpokeVNets = (): void => {
   const currentCount = spokeVNets.value.length
   const targetCount = Math.min(Math.max(1, numberOfSpokeVNets.value || 1), 10)
@@ -859,7 +875,6 @@ const updateSpokeVNets = (): void => {
 
 const calculateSpokeVNets = (): void => {
   if (!peeringEnabled.value) {
-    spokeVNets.value = []
     return
   }
 
