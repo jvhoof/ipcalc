@@ -12,6 +12,7 @@ VNET_NAME="${PREFIX}-vnet"
 VNET_CIDR="{{vnetCidr}}"
 
 {{subnetVariables}}
+{{spokeVnetVariables}}
 
 # ========================================
 # Create Resource Group
@@ -22,7 +23,7 @@ az group create \
   --location "${LOCATION}"
 
 # ========================================
-# Create Virtual Network
+# Create Virtual Network (Hub)
 # ========================================
 echo "Creating Virtual Network: ${VNET_NAME}"
 az network vnet create \
@@ -35,5 +36,8 @@ az network vnet create \
 # Create Subnets
 # ========================================
 {{subnetCreation}}
+
+{{spokeVnetCreation}}
+{{vnetPeering}}
 
 echo "Azure VNet and Subnets created successfully!"

@@ -299,6 +299,144 @@
         </v-expansion-panel>
       </v-expansion-panels>
 
+      <!-- VNET Peering Configuration -->
+      <v-expansion-panels class="mt-4 mb-4" :style="{ backgroundColor: mainPanelBgColor }">
+        <v-expansion-panel :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+          <v-expansion-panel-title class="text-body-2" :style="{ color: mainPanelTextColor }">
+            <v-icon class="mr-2" size="small">mdi-connection</v-icon>
+            <span>VNET Peering (Hub-Spoke Topology)</span>
+          </v-expansion-panel-title>
+          <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+            <div class="text-subtitle-2 font-weight-bold mb-3">Configure Spoke VNETs</div>
+
+            <!-- Enable/Disable Peering -->
+            <v-switch
+              v-model="peeringEnabled"
+              label="Enable VNET Peering"
+              color="primary"
+              density="compact"
+              @update:model-value="calculateSpokeVNets"
+              hide-details
+              class="mb-4"
+            ></v-switch>
+
+            <div v-if="peeringEnabled">
+              <!-- Number of Spoke VNETs -->
+              <v-row>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    v-model.number="numberOfSpokeVNets"
+                    label="Number of Spoke VNETs"
+                    type="number"
+                    min="1"
+                    max="10"
+                    variant="outlined"
+                    @input="updateSpokeVNets"
+                    density="comfortable"
+                    hint="Maximum 10 spoke VNETs"
+                    persistent-hint
+                  ></v-text-field>
+                </v-col>
+              </v-row>
+
+              <!-- Spoke VNET Configurations -->
+              <v-expansion-panels v-if="spokeVNets.length > 0" class="mt-4" multiple>
+                <v-expansion-panel
+                  v-for="(spoke, index) in spokeVNets"
+                  :key="index"
+                  :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }"
+                >
+                  <v-expansion-panel-title :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
+                    <div class="d-flex align-center">
+                      <v-icon class="mr-2">mdi-network-outline</v-icon>
+                      <span class="font-weight-bold">Spoke VNET {{ index + 1 }}: {{ spoke.cidr || 'Not configured' }}</span>
+                    </div>
+                  </v-expansion-panel-title>
+                  <v-expansion-panel-text :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
+                    <v-row>
+                      <v-col cols="12" md="8">
+                        <v-text-field
+                          v-model="spoke.cidr"
+                          label="Spoke VNET CIDR Block"
+                          placeholder="10.1.0.0/16"
+                          variant="outlined"
+                          @input="() => calculateSpokeSubnets(index)"
+                          density="comfortable"
+                          hint="Enter the spoke VNET address space"
+                          persistent-hint
+                        >
+                          <template v-slot:append>
+                            <v-btn
+                              icon="mdi-chevron-left"
+                              size="small"
+                              variant="text"
+                              @click="decrementSpokeCIDR(index)"
+                            ></v-btn>
+                            <v-btn
+                              icon="mdi-chevron-right"
+                              size="small"
+                              variant="text"
+                              @click="incrementSpokeCIDR(index)"
+                            ></v-btn>
+                          </template>
+                        </v-text-field>
+                      </v-col>
+                      <v-col cols="12" md="4">
+                        <v-text-field
+                          v-model.number="spoke.numberOfSubnets"
+                          label="Number of Subnets"
+                          type="number"
+                          min="1"
+                          max="256"
+                          variant="outlined"
+                          @input="() => calculateSpokeSubnets(index)"
+                          density="comfortable"
+                        ></v-text-field>
+                      </v-col>
+                    </v-row>
+
+                    <!-- Spoke VNET Info -->
+                    <v-card v-if="spoke.vnetInfo" class="mt-2" variant="outlined" :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+                      <v-card-text :style="{ color: mainPanelTextColor }">
+                        <v-list density="compact" :style="{ backgroundColor: 'transparent', color: mainPanelTextColor }">
+                          <v-list-item>
+                            <v-list-item-title>Spoke VNET Address Space</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.vnetInfo.network }}</v-list-item-subtitle>
+                          </v-list-item>
+                          <v-list-item>
+                            <v-list-item-title>Total IP Addresses</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.vnetInfo.totalIPs.toLocaleString() }}</v-list-item-subtitle>
+                          </v-list-item>
+                          <v-list-item>
+                            <v-list-item-title>Subnets Created</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.subnets?.length || 0 }}</v-list-item-subtitle>
+                          </v-list-item>
+                        </v-list>
+                      </v-card-text>
+                    </v-card>
+
+                    <!-- Error Message for Spoke -->
+                    <v-alert v-if="spoke.error" type="error" class="mt-2" density="compact">
+                      {{ spoke.error }}
+                    </v-alert>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
+
+              <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start">
+                <div class="text-caption">
+                  <strong>Hub-Spoke Topology:</strong><br>
+                  • The main VNET acts as the hub, connecting to multiple spoke VNETs via peering<br>
+                  • Spoke VNETs should use non-overlapping CIDR blocks<br>
+                  • Each peering connection allows bi-directional traffic between hub and spoke<br>
+                  • Consider enabling gateway transit if using VPN/ExpressRoute in the hub
+                </div>
+              </v-alert>
+            </div>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
+
       <!-- Requirements Info Box -->
       <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
         <div class="text-caption">
@@ -352,6 +490,14 @@ interface Subnet {
   usableRange: string
 }
 
+interface SpokeVNet {
+  cidr: string
+  numberOfSubnets: number
+  vnetInfo: VNetInfo | null
+  subnets: Subnet[]
+  error: string
+}
+
 const vnetCidr = ref<string>(azureConfig.defaultCidr)
 const numberOfSubnets = ref<number>(azureConfig.defaultSubnetCount)
 const desiredSubnetPrefix = ref<number | null>(null)
@@ -361,6 +507,11 @@ const errorMessage = ref<string>('')
 const showCodeDialog = ref<boolean>(false)
 const generatedCode = ref<string>('')
 const codeDialogTitle = ref<string>('')
+
+// VNET Peering state
+const peeringEnabled = ref<boolean>(false)
+const numberOfSpokeVNets = ref<number>(1)
+const spokeVNets = ref<SpokeVNet[]>([])
 
 const parseIP = (ip: string): number[] | null => {
   const parts = ip.split('.')
@@ -564,7 +715,9 @@ const generateAzureCLI = async (): Promise<void> => {
 
   const code = await loadAzureCLITemplate({
     vnetCidr: vnetCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    peeringEnabled: peeringEnabled.value,
+    spokeVNets: spokeVNets.value
   })
 
   generatedCode.value = code
@@ -577,7 +730,9 @@ const generateTerraform = async (): Promise<void> => {
 
   const code = await loadAzureTerraformTemplate({
     vnetCidr: vnetCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    peeringEnabled: peeringEnabled.value,
+    spokeVNets: spokeVNets.value
   })
 
   generatedCode.value = code
@@ -590,7 +745,9 @@ const generateBicep = async (): Promise<void> => {
 
   const code = await loadAzureBicepTemplate({
     vnetCidr: vnetCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    peeringEnabled: peeringEnabled.value,
+    spokeVNets: spokeVNets.value
   })
 
   generatedCode.value = code
@@ -603,7 +760,9 @@ const generateARM = async (): Promise<void> => {
 
   const code = await loadAzureARMTemplate({
     vnetCidr: vnetCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    peeringEnabled: peeringEnabled.value,
+    spokeVNets: spokeVNets.value
   })
 
   generatedCode.value = code
@@ -616,7 +775,9 @@ const generatePowerShell = async (): Promise<void> => {
 
   const code = await loadAzurePowerShellTemplate({
     vnetCidr: vnetCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    peeringEnabled: peeringEnabled.value,
+    spokeVNets: spokeVNets.value
   })
 
   generatedCode.value = code
@@ -665,6 +826,174 @@ const handleKeydown = (event: KeyboardEvent): void => {
   } else if (event.key === 'ArrowRight') {
     event.preventDefault()
     incrementVNetCIDR()
+  }
+}
+
+// VNET Peering functions
+const updateSpokeVNets = (): void => {
+  const currentCount = spokeVNets.value.length
+  const targetCount = Math.min(Math.max(1, numberOfSpokeVNets.value || 1), 10)
+  numberOfSpokeVNets.value = targetCount
+
+  if (targetCount > currentCount) {
+    // Add new spoke VNETs
+    for (let i = currentCount; i < targetCount; i++) {
+      // Generate a default CIDR for the spoke (different from hub)
+      const baseOctet = 10 + i + 1 // Start from 10.1.0.0, 10.2.0.0, etc.
+      spokeVNets.value.push({
+        cidr: `${baseOctet}.0.0.0/16`,
+        numberOfSubnets: 2,
+        vnetInfo: null,
+        subnets: [],
+        error: ''
+      })
+    }
+  } else if (targetCount < currentCount) {
+    // Remove excess spoke VNETs
+    spokeVNets.value = spokeVNets.value.slice(0, targetCount)
+  }
+
+  // Calculate all spoke VNETs
+  calculateSpokeVNets()
+}
+
+const calculateSpokeVNets = (): void => {
+  if (!peeringEnabled.value) {
+    spokeVNets.value = []
+    return
+  }
+
+  // Calculate each spoke VNET
+  spokeVNets.value.forEach((_, index) => {
+    calculateSpokeSubnets(index)
+  })
+}
+
+const calculateSpokeSubnets = (index: number): void => {
+  const spoke = spokeVNets.value[index]
+  if (!spoke) return
+
+  spoke.error = ''
+  spoke.vnetInfo = null
+  spoke.subnets = []
+
+  if (!spoke.cidr) {
+    return
+  }
+
+  try {
+    const parsed = parseCIDR(spoke.cidr)
+    if (!parsed) {
+      spoke.error = 'Invalid CIDR notation. Use format: 10.1.0.0/16'
+      return
+    }
+
+    const { ip, prefix } = parsed
+
+    // Calculate VNet info
+    const networkNum = ipToNumber(ip) & (0xFFFFFFFF << (32 - prefix))
+    const networkIP = numberToIP(networkNum)
+    const totalIPs = Math.pow(2, 32 - prefix)
+    const lastIPNum = networkNum + totalIPs - 1
+    const lastIP = numberToIP(lastIPNum)
+
+    spoke.vnetInfo = {
+      network: networkIP.join('.'),
+      totalIPs: totalIPs,
+      firstIP: networkIP.join('.'),
+      lastIP: lastIP.join('.')
+    }
+
+    // Calculate subnets
+    if (spoke.numberOfSubnets < 1 || spoke.numberOfSubnets > 256) {
+      spoke.error = 'Number of subnets must be between 1 and 256'
+      return
+    }
+
+    // Calculate required prefix length for subnets
+    const bitsNeeded = Math.ceil(Math.log2(spoke.numberOfSubnets))
+    const subnetPrefix = prefix + bitsNeeded
+
+    // Check against Azure minimum
+    if (subnetPrefix > azureConfig.minCidrPrefix) {
+      spoke.error = `Cannot divide /${prefix} into ${spoke.numberOfSubnets} subnets. Each subnet would be smaller than /${azureConfig.minCidrPrefix} (Azure minimum).`
+      return
+    }
+
+    if (subnetPrefix > 32) {
+      spoke.error = `Cannot divide /${prefix} into ${spoke.numberOfSubnets} subnets. Not enough address space.`
+      return
+    }
+
+    // Calculate subnets
+    const subnetSize = Math.pow(2, 32 - subnetPrefix)
+    const actualNumberOfSubnets = Math.min(spoke.numberOfSubnets, Math.floor(totalIPs / subnetSize))
+
+    for (let i = 0; i < actualNumberOfSubnets; i++) {
+      const subnetNetworkNum = networkNum + (i * subnetSize)
+      const subnetNetwork = numberToIP(subnetNetworkNum)
+      const subnetMask = cidrToMask(subnetPrefix)
+
+      const reserved: string[] = [
+        numberToIP(subnetNetworkNum).join('.'),
+        numberToIP(subnetNetworkNum + 1).join('.'),
+        numberToIP(subnetNetworkNum + 2).join('.'),
+        numberToIP(subnetNetworkNum + 3).join('.'),
+        numberToIP(subnetNetworkNum + subnetSize - 1).join('.')
+      ]
+
+      const usableIPs = subnetSize - azureConfig.reservedIpCount
+      const firstUsable = numberToIP(subnetNetworkNum + 4).join('.')
+      const lastUsable = numberToIP(subnetNetworkNum + subnetSize - 2).join('.')
+
+      spoke.subnets.push({
+        network: subnetNetwork.join('.'),
+        cidr: `${subnetNetwork.join('.')}/${subnetPrefix}`,
+        mask: subnetMask.join('.'),
+        totalIPs: subnetSize,
+        usableIPs: usableIPs,
+        reserved: reserved,
+        usableRange: `${firstUsable} - ${lastUsable}`
+      })
+    }
+  } catch (error) {
+    spoke.error = 'Error calculating spoke subnets. Please check your input.'
+    console.error(error)
+  }
+}
+
+const getCurrentSpokeCIDR = (index: number): number | null => {
+  const spoke = spokeVNets.value[index]
+  if (!spoke) return null
+
+  const parts = spoke.cidr.split('/')
+  if (parts.length !== 2) return null
+
+  const cidr = parseInt(parts[1], 10)
+  return isNaN(cidr) ? null : cidr
+}
+
+const incrementSpokeCIDR = (index: number): void => {
+  const spoke = spokeVNets.value[index]
+  if (!spoke) return
+
+  const cidr = getCurrentSpokeCIDR(index)
+  if (cidr !== null && cidr < azureConfig.minCidrPrefix) {
+    const parts = spoke.cidr.split('/')
+    spoke.cidr = `${parts[0]}/${cidr + 1}`
+    calculateSpokeSubnets(index)
+  }
+}
+
+const decrementSpokeCIDR = (index: number): void => {
+  const spoke = spokeVNets.value[index]
+  if (!spoke) return
+
+  const cidr = getCurrentSpokeCIDR(index)
+  if (cidr !== null && cidr > azureConfig.maxCidrPrefix) {
+    const parts = spoke.cidr.split('/')
+    spoke.cidr = `${parts[0]}/${cidr - 1}`
+    calculateSpokeSubnets(index)
   }
 }
 
