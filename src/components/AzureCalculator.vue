@@ -457,7 +457,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, inject, computed, type Ref } from 'vue'
+import { ref, onMounted, onUnmounted, inject, computed, watch, type Ref } from 'vue'
 import { getThemeStyles, getMainPanelBackgroundColor, getMainPanelTextColor, getNestedPanelBackgroundColor, getNestedPanelTextColor } from '../config/cloudThemes'
 import { getCloudProviderConfig } from '../config/cloudProviderConfig'
 import {
@@ -893,6 +893,20 @@ const updateSpokeVNets = (): void => {
   calculateSpokeVNets()
 }
 
+const updateSpokeVNetCIDRs = (): void => {
+  if (!peeringEnabled.value || !vnetCidr.value || spokeVNets.value.length === 0) {
+    return
+  }
+
+  // Update each spoke VNET CIDR based on the hub VNET
+  spokeVNets.value.forEach((spoke, index) => {
+    spoke.cidr = getNextCIDRBlock(vnetCidr.value, index + 1)
+  })
+
+  // Recalculate all spoke VNETs
+  calculateSpokeVNets()
+}
+
 const calculateSpokeVNets = (): void => {
   if (!peeringEnabled.value) {
     return
@@ -1031,6 +1045,11 @@ const decrementSpokeCIDR = (index: number): void => {
     calculateSpokeSubnets(index)
   }
 }
+
+// Watch for changes to the hub VNET CIDR and update spoke VNETs accordingly
+watch(vnetCidr, () => {
+  updateSpokeVNetCIDRs()
+})
 
 onMounted(() => {
   // Set default subnet prefix based on initial VNet CIDR
