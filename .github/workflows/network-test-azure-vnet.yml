@@ -898,3 +898,267 @@ jobs:
 
           echo "✅ Cleanup initiated (running in background)"
           echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
+
+  # ========================================
+  # VNET Peering Tests (Hub-Spoke Topology)
+  # ========================================
+
+  deploy-peering-with-azure-cli:
+    name: Deploy and Test VNET Peering with Azure CLI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Azure CLI Script with VNET Peering
+        id: generate-script
+        run: |
+          echo "Generating Azure CLI script with VNET peering using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  Hub CIDR: 10.0.0.0/16"
+          echo "  Hub Subnets: 2"
+          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
+          echo "  Spoke Subnets: 2,2,2"
+
+          # Generate Azure CLI script with VNET peering
+          npm run cli -- \
+            --provider azure \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --output cli \
+            --file /tmp/deploy-vnet-peering-generated.sh
+
+          # Set unique names for this job
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          RG_NAME="${JOB_PREFIX}-rg"
+          VNET_NAME="${JOB_PREFIX}-vnet"
+
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+
+          # Customize the script
+          sed -i "s/PREFIX=\"myproject\"/PREFIX=\"${JOB_PREFIX}\"/" /tmp/deploy-vnet-peering-generated.sh
+          sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-peering-generated.sh
+          chmod +x /tmp/deploy-vnet-peering-generated.sh
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Execute Azure CLI Deployment
+        run: /tmp/deploy-vnet-peering-generated.sh
+
+      - name: Validate VNET Peering
+        run: |
+          echo "🔍 Validating VNET peering connections..."
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="hub-to-spoke${spoke_num}"
+            PEERING_STATUS=$(az network vnet peering show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name ${{ env.VNET_NAME }} \
+              --name "$PEERING_NAME" \
+              --query "peeringState" -o tsv 2>/dev/null || echo "")
+
+            if [ "$PEERING_STATUS" != "Connected" ]; then
+              echo "❌ Peering $PEERING_NAME not connected!"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is connected"
+          done
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
+
+  deploy-peering-with-terraform:
+    name: Deploy and Test VNET Peering with Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "RESOURCE_GROUP=${JOB_PREFIX}-rg" >> $GITHUB_ENV
+          echo "VNET_NAME=${JOB_PREFIX}-vnet" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Generate Terraform Configuration with VNET Peering
+        run: |
+          npm run cli -- \
+            --provider azure \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --output terraform \
+            --file /tmp/test-terraform-peering.tf
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Setup Azure Credentials for Terraform
+        run: |
+          CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.clientId')
+          CLIENT_SECRET=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.clientSecret')
+          SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.subscriptionId')
+          TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.tenantId')
+          echo "ARM_CLIENT_ID=$CLIENT_ID" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=$CLIENT_SECRET" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=$SUBSCRIPTION_ID" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=$TENANT_ID" >> $GITHUB_ENV
+
+      - name: Deploy with Terraform
+        working-directory: /tmp
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var "location=${{ env.AZURE_LOCATION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}"
+
+      - name: Validate VNET Peering
+        run: |
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="hub-to-spoke${spoke_num}"
+            PEERING_STATUS=$(az network vnet peering show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name ${{ env.VNET_NAME }} \
+              --name "$PEERING_NAME" \
+              --query "peeringState" -o tsv 2>/dev/null || echo "")
+            if [ "$PEERING_STATUS" != "Connected" ]; then
+              echo "❌ Peering $PEERING_NAME not connected!"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is connected"
+          done
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        run: |
+          terraform destroy -auto-approve \
+            -var "location=${{ env.AZURE_LOCATION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}" || \
+          az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
+
+  deploy-peering-with-arm-template:
+    name: Deploy and Test VNET Peering with ARM Template
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "RESOURCE_GROUP=${JOB_PREFIX}-rg" >> $GITHUB_ENV
+          echo "VNET_NAME=${JOB_PREFIX}-vnet" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate ARM Template with VNET Peering
+        run: |
+          npm run cli -- \
+            --provider azure \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --output arm \
+            --file /tmp/test-arm-template-peering.json
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group
+        run: |
+          az group create \
+            --name "${{ env.RESOURCE_GROUP }}" \
+            --location ${{ env.AZURE_LOCATION }}
+
+      - name: Deploy ARM Template
+        run: |
+          az deployment group create \
+            --name "vnet-peering-deployment-${{ github.run_id }}" \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --template-file /tmp/test-arm-template-peering.json \
+            --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.JOB_PREFIX }}"
+
+      - name: Validate VNET Peering
+        run: |
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="hub-to-spoke${spoke_num}"
+            PEERING_STATUS=$(az network vnet peering show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name ${{ env.VNET_NAME }} \
+              --name "$PEERING_NAME" \
+              --query "peeringState" -o tsv 2>/dev/null || echo "")
+            if [ "$PEERING_STATUS" != "Connected" ]; then
+              echo "❌ Peering $PEERING_NAME not connected!"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is connected"
+          done
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait

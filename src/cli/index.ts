@@ -25,6 +25,11 @@ import {
   loadAliCloudTerraformTemplate
 } from './templateLoaderNode'
 
+interface SpokeVNetConfig {
+  cidr: string
+  subnets: number
+}
+
 interface CliArgs {
   provider: string
   cidr: string
@@ -33,6 +38,9 @@ interface CliArgs {
   output?: 'info' | 'cli' | 'terraform' | 'bicep' | 'arm' | 'powershell' | 'cloudformation' | 'gcloud' | 'oci' | 'aliyun'
   file?: string
   help?: boolean
+  // VNET Peering options (Azure only)
+  spokeCidrs?: string[]
+  spokeSubnets?: number[]
 }
 
 const PROVIDERS = ['azure', 'aws', 'gcp', 'oracle', 'alicloud', 'onpremises']
@@ -72,6 +80,13 @@ Optional Arguments:
   --file <path>         Write output to file instead of stdout
   --help                Show this help message
 
+Azure VNET Peering Options (Hub-Spoke Topology):
+  --spoke-cidrs <cidrs>    Comma-separated list of spoke VNET CIDRs
+                           (e.g., "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16")
+  --spoke-subnets <counts> Comma-separated list of subnet counts per spoke
+                           (e.g., "2,2,2" - must match number of spoke CIDRs)
+                           If omitted, defaults to 2 subnets per spoke VNET
+
 Examples:
   # Show network information
   ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 4
@@ -87,6 +102,11 @@ Examples:
 
   # Generate GCP gcloud commands
   ipcalc --provider gcp --cidr 10.0.0.0/20 --subnets 4 --output gcloud
+
+  # Azure with VNET peering (hub-spoke topology)
+  ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 2 \\
+    --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \\
+    --spoke-subnets "2,2,2" --output terraform
 `)
 }
 
@@ -135,6 +155,18 @@ function parseArgs(): CliArgs | null {
         args.file = nextArg
         i++
         break
+      case '--spoke-cidrs':
+        if (nextArg) {
+          args.spokeCidrs = nextArg.split(',').map(cidr => cidr.trim())
+        }
+        i++
+        break
+      case '--spoke-subnets':
+        if (nextArg) {
+          args.spokeSubnets = nextArg.split(',').map(count => parseInt(count.trim(), 10))
+        }
+        i++
+        break
     }
   }
 
@@ -156,6 +188,29 @@ function validateArgs(args: CliArgs): string | null {
 
   if (args.output && !OUTPUTS_BY_PROVIDER[args.provider].includes(args.output)) {
     return `Invalid output type for ${args.provider}. Must be one of: ${OUTPUTS_BY_PROVIDER[args.provider].join(', ')}`
+  }
+
+  // Validate VNET peering options (Azure only)
+  if (args.spokeCidrs || args.spokeSubnets) {
+    if (args.provider !== 'azure') {
+      return 'VNET peering options (--spoke-cidrs, --spoke-subnets) are only supported for Azure provider'
+    }
+
+    if (args.spokeCidrs && args.spokeCidrs.length === 0) {
+      return 'At least one spoke VNET CIDR is required when using --spoke-cidrs'
+    }
+
+    if (args.spokeCidrs && args.spokeCidrs.length > 10) {
+      return 'Maximum of 10 spoke VNETs allowed'
+    }
+
+    if (args.spokeSubnets && args.spokeCidrs && args.spokeSubnets.length !== args.spokeCidrs.length) {
+      return 'Number of spoke subnet counts must match number of spoke CIDRs'
+    }
+
+    if (args.spokeSubnets && args.spokeSubnets.some(count => count < 1 || count > 256)) {
+      return 'Spoke subnet count must be between 1 and 256'
+    }
   }
 
   return null
@@ -211,7 +266,7 @@ function formatNetworkInfo(cidr: string, subnets: SubnetInfo[], provider: string
   return output
 }
 
-function generateOutput(args: CliArgs, subnets: SubnetInfo[]): string {
+function generateOutput(args: CliArgs, subnets: SubnetInfo[], spokeVNets: any[]): string {
   const outputType = args.output || 'info'
 
   // Info output
@@ -221,7 +276,9 @@ function generateOutput(args: CliArgs, subnets: SubnetInfo[]): string {
 
   const templateData = {
     vnetCidr: args.cidr,
-    subnets: subnets
+    subnets: subnets,
+    peeringEnabled: spokeVNets.length > 0,
+    spokeVNets: spokeVNets
   }
 
   // Azure outputs
@@ -311,9 +368,47 @@ function main(): void {
     process.exit(1)
   }
 
+  // Calculate spoke VNETs if provided
+  const spokeVNets: any[] = []
+  if (args.spokeCidrs && args.spokeCidrs.length > 0) {
+    const defaultSpokeSubnets = args.spokeSubnets || args.spokeCidrs.map(() => 2)
+
+    for (let i = 0; i < args.spokeCidrs.length; i++) {
+      const spokeCidr = args.spokeCidrs[i]
+      const spokeSubnetCount = defaultSpokeSubnets[i] || 2
+
+      // Calculate network info for spoke VNET
+      const spokeNetwork = calculateNetwork(spokeCidr, config)
+      if (!spokeNetwork) {
+        console.error(`Error: Invalid spoke VNET CIDR: ${spokeCidr}`)
+        process.exit(1)
+      }
+
+      // Calculate subnets for spoke VNET
+      const spokeResult = calculateSubnets(spokeCidr, spokeSubnetCount, config)
+      if (spokeResult.error) {
+        console.error(`Error in spoke VNET ${i + 1} (${spokeCidr}): ${spokeResult.error}`)
+        process.exit(1)
+      }
+
+      spokeVNets.push({
+        cidr: spokeCidr,
+        numberOfSubnets: spokeSubnetCount,
+        vnetInfo: {
+          network: spokeNetwork.network,
+          totalIPs: spokeNetwork.totalIPs,
+          firstIP: spokeNetwork.firstIP,
+          lastIP: spokeNetwork.lastIP
+        },
+        subnets: spokeResult.subnets,
+        error: ''
+      })
+    }
+  }
+
   // Generate output
   try {
-    const output = generateOutput(args, subnets)
+    const output = generateOutput(args, subnets, spokeVNets)
 
     if (args.file) {
       writeFileSync(args.file, output, 'utf-8')
