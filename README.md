@@ -214,6 +214,81 @@ done
 
 For more detailed CLI documentation, see [CLI.md](CLI.md).
 
+## Azure VNET Peering (Hub-Spoke Topology)
+
+The Azure calculator supports VNET peering for hub-spoke network topologies.
+
+### Web Interface
+
+In the web interface, enable VNET peering using the "VNET Peering (Hub-Spoke Topology)" expansion panel:
+
+1. **Enable Peering**: Toggle the switch to enable VNET peering
+2. **Configure Spoke VNETs**: Set the number of spoke VNETs (1-10)
+3. **Configure Each Spoke**:
+   - Set the CIDR block for each spoke VNET
+   - Define the number of subnets per spoke
+4. **Generate Code**: All output formats (CLI, Terraform, Bicep, ARM, PowerShell) will include:
+   - Spoke VNET creation
+   - Spoke subnet configuration
+   - Bi-directional peering connections (hub-to-spoke and spoke-to-hub)
+
+### CLI Usage
+
+Use the `--spoke-cidrs` and `--spoke-subnets` options to configure VNET peering:
+
+```bash
+# Basic hub-spoke with 3 spoke VNETs
+npm run cli -- \
+  --provider azure \
+  --cidr 10.0.0.0/16 \
+  --subnets 2 \
+  --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+  --spoke-subnets "2,2,2" \
+  --output cli
+
+# Generate Terraform with peering
+npm run cli -- \
+  --provider azure \
+  --cidr 10.0.0.0/16 \
+  --subnets 2 \
+  --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+  --output terraform \
+  --file infrastructure-with-peering.tf
+
+# Spoke subnets default to 2 if not specified
+npm run cli -- \
+  --provider azure \
+  --cidr 10.0.0.0/16 \
+  --subnets 2 \
+  --spoke-cidrs "10.1.0.0/16,10.2.0.0/16" \
+  --output bicep
+```
+
+### Hub-Spoke Topology Features
+
+- **Bi-directional Traffic**: Each peering connection allows traffic in both directions
+- **No Transitive Routing**: Spokes cannot communicate directly with each other (only through hub)
+- **Gateway Transit Support**: Templates include gateway transit settings (disabled by default)
+- **Non-overlapping CIDRs**: Spoke VNETs should use non-overlapping CIDR blocks
+- **Scalability**: Support for up to 10 spoke VNETs per hub
+
+### Generated Resources
+
+When VNET peering is enabled, the generated code creates:
+
+1. **Hub VNET**: The main virtual network with configured subnets
+2. **Spoke VNETs**: Additional virtual networks, each with their own subnets
+3. **Peering Connections**:
+   - `hub-to-spoke1`, `hub-to-spoke2`, etc. (hub to each spoke)
+   - `spoke1-to-hub`, `spoke2-to-hub`, etc. (each spoke to hub)
+
+### Use Cases
+
+- **Shared Services**: Central hub for shared resources (DNS, VPN gateway, firewalls)
+- **Environment Isolation**: Separate spoke VNETs for dev, staging, and production
+- **Application Segmentation**: Different spokes for different applications or business units
+- **Cost Optimization**: Centralize networking resources in the hub VNET
+
 ## Cloud Provider Details
 
 ### Azure
@@ -221,6 +296,7 @@ For more detailed CLI documentation, see [CLI.md](CLI.md).
 - **Minimum Subnet**: /29 (8 IPs, 3 usable)
 - **VNet CIDR Range**: /8 to /29
 - **Outputs**: CLI, Terraform, Bicep, ARM, PowerShell
+- **VNET Peering**: Hub-spoke topology with up to 10 spoke VNETs
 
 ### AWS
 - **Reserved IPs**: 5 per subnet (first 4 + last 1)
