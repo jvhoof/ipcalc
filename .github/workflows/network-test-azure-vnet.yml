@@ -690,6 +690,199 @@ jobs:
 
           echo "✅ Cleanup completed"
 
+  deploy-with-powershell:
+    name: Deploy and Test with PowerShell
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate PowerShell Script using ipcalc CLI
+        id: generate-powershell
+        run: |
+          echo "Generating PowerShell script using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  CIDR: ${{ env.VNET_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Location: ${{ env.AZURE_LOCATION }}"
+          echo "  Prefix: ${{ env.RESOURCE_PREFIX }}"
+
+          # Generate PowerShell script using ipcalc CLI
+          npm run cli -- \
+            --provider azure \
+            --cidr ${{ env.VNET_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output powershell \
+            --file /tmp/test-powershell.ps1
+
+          echo "PowerShell script generated successfully"
+          echo "Script contents:"
+          cat /tmp/test-powershell.ps1
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
+
+      - name: Set Unique Names
+        run: |
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          RG_NAME="${JOB_PREFIX}-rg"
+          VNET_NAME="${JOB_PREFIX}-vnet"
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+
+          # Customize the PowerShell script with unique values
+          sed -i "s/\$Prefix = \"myproject\"/\$Prefix = \"${JOB_PREFIX}\"/" /tmp/test-powershell.ps1
+          sed -i 's/$Location = "eastus"/$Location = "${{ env.AZURE_LOCATION }}"/' /tmp/test-powershell.ps1
+
+          echo "Customized PowerShell script:"
+          cat /tmp/test-powershell.ps1
+
+      - name: Execute PowerShell Deployment
+        id: deploy
+        shell: pwsh
+        run: |
+          Write-Host "Executing PowerShell deployment script..."
+          $result = & /tmp/test-powershell.ps1
+          Write-Host "✅ Deployment script executed successfully"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          # Check if VNET exists
+          echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ VNET not found!"
+            exit 1
+          fi
+          echo "✅ VNET exists: $VNET_EXISTS"
+
+          # Validate VNET CIDR
+          echo "Validating VNET address space..."
+          VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+          if [ "$VNET_ADDRESS" != "${{ env.VNET_CIDR }}" ]; then
+            echo "❌ VNET CIDR mismatch! Expected: ${{ env.VNET_CIDR }}, Got: $VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ VNET CIDR is correct: $VNET_ADDRESS"
+
+          # List and validate subnets
+          echo "Listing subnets..."
+          SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[].{name:name, prefix:addressPrefix}" -o table)
+
+          echo "$SUBNETS"
+
+          SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          # Validate each subnet is within VNET CIDR
+          echo "Validating subnet address spaces..."
+          az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
+            -o table
+
+          # Check provisioning state
+          FAILED_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_SUBNETS" ]; then
+            echo "❌ Some subnets failed to provision: $FAILED_SUBNETS"
+            exit 1
+          fi
+
+          echo "✅ All subnets provisioned successfully"
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 Azure VNET Deployment Test Report" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** PowerShell" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
+          echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
+          echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
+          else
+            echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
+          fi
+
+          echo "" >> /tmp/test-report.md
+          echo "### Resources Deployed:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          echo "🧹 Cleaning up resources..."
+          echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
+
+          az group delete \
+            --name ${{ env.RESOURCE_GROUP }} \
+            --yes \
+            --no-wait
+
+          echo "✅ Cleanup initiated (running in background)"
+          echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
+
   deploy-with-bicep:
     name: Deploy and Test with Bicep
     runs-on: ubuntu-latest
@@ -1146,6 +1339,198 @@ jobs:
 
       - name: Validate VNET Peering
         run: |
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="hub-to-spoke${spoke_num}"
+            PEERING_STATUS=$(az network vnet peering show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name ${{ env.VNET_NAME }} \
+              --name "$PEERING_NAME" \
+              --query "peeringState" -o tsv 2>/dev/null || echo "")
+            if [ "$PEERING_STATUS" != "Connected" ]; then
+              echo "❌ Peering $PEERING_NAME not connected!"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is connected"
+          done
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
+
+  deploy-peering-with-powershell:
+    name: Deploy and Test VNET Peering with PowerShell
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate PowerShell Script with VNET Peering
+        id: generate-script
+        run: |
+          echo "Generating PowerShell script with VNET peering using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  Hub CIDR: 10.0.0.0/16"
+          echo "  Hub Subnets: 2"
+          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
+          echo "  Spoke Subnets: 2,2,2"
+
+          # Generate PowerShell script with VNET peering
+          npm run cli -- \
+            --provider azure \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --output powershell \
+            --file /tmp/deploy-vnet-peering-generated.ps1
+
+          # Set unique names for this job
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          RG_NAME="${JOB_PREFIX}-rg"
+          VNET_NAME="${JOB_PREFIX}-vnet"
+
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+
+          # Customize the script
+          sed -i "s/\$Prefix = \"myproject\"/\$Prefix = \"${JOB_PREFIX}\"/" /tmp/deploy-vnet-peering-generated.ps1
+          sed -i 's/$Location = "eastus"/$Location = "${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-peering-generated.ps1
+
+          echo "Customized PowerShell script:"
+          cat /tmp/deploy-vnet-peering-generated.ps1
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
+
+      - name: Execute PowerShell Deployment
+        shell: pwsh
+        run: |
+          Write-Host "Executing PowerShell deployment script with VNET peering..."
+          $result = & /tmp/deploy-vnet-peering-generated.ps1
+          Write-Host "✅ Deployment script executed successfully"
+
+      - name: Validate VNET Peering
+        run: |
+          echo "🔍 Validating VNET peering connections..."
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="hub-to-spoke${spoke_num}"
+            PEERING_STATUS=$(az network vnet peering show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name ${{ env.VNET_NAME }} \
+              --name "$PEERING_NAME" \
+              --query "peeringState" -o tsv 2>/dev/null || echo "")
+
+            if [ "$PEERING_STATUS" != "Connected" ]; then
+              echo "❌ Peering $PEERING_NAME not connected!"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is connected"
+          done
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
+
+  deploy-peering-with-bicep:
+    name: Deploy and Test VNET Peering with Bicep
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "RESOURCE_GROUP=${JOB_PREFIX}-rg" >> $GITHUB_ENV
+          echo "VNET_NAME=${JOB_PREFIX}-vnet" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Bicep Configuration with VNET Peering
+        run: |
+          echo "Generating Bicep configuration with VNET peering using ipcalc CLI..."
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  Hub CIDR: 10.0.0.0/16"
+          echo "  Hub Subnets: 2"
+          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
+          echo "  Spoke Subnets: 2,2,2"
+
+          # Generate Bicep configuration with VNET peering
+          npm run cli -- \
+            --provider azure \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --output bicep \
+            --file /tmp/test-bicep-peering.bicep
+
+          echo "Bicep configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-bicep-peering.bicep
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group
+        run: |
+          az group create \
+            --name "${{ env.RESOURCE_GROUP }}" \
+            --location ${{ env.AZURE_LOCATION }}
+
+      - name: Deploy Bicep Template
+        run: |
+          echo "Deploying Bicep template with VNET peering..."
+          DEPLOYMENT_NAME="vnet-peering-deployment-${{ github.run_id }}"
+
+          az deployment group create \
+            --name "$DEPLOYMENT_NAME" \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --template-file /tmp/test-bicep-peering.bicep \
+            --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.JOB_PREFIX }}"
+
+      - name: Validate VNET Peering
+        run: |
+          echo "🔍 Validating VNET peering connections..."
           for spoke_num in 1 2 3; do
             PEERING_NAME="hub-to-spoke${spoke_num}"
             PEERING_STATUS=$(az network vnet peering show \
