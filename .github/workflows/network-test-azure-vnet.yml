@@ -743,6 +743,14 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           enable-AzPSSession: true
 
+      - name: Install PowerShell Azure Modules
+        shell: pwsh
+        run: |
+          Write-Host "Installing required Azure PowerShell modules..." -ForegroundColor Cyan
+          Install-Module -Name Az.Network -Force -AllowClobber -Scope CurrentUser
+          Install-Module -Name Az.Resources -Force -AllowClobber -Scope CurrentUser
+          Write-Host "✓ Modules installed successfully" -ForegroundColor Green
+
       - name: Set Unique Names
         run: |
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
@@ -1424,6 +1432,14 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           enable-AzPSSession: true
+
+      - name: Install PowerShell Azure Modules
+        shell: pwsh
+        run: |
+          Write-Host "Installing required Azure PowerShell modules..." -ForegroundColor Cyan
+          Install-Module -Name Az.Network -Force -AllowClobber -Scope CurrentUser
+          Install-Module -Name Az.Resources -Force -AllowClobber -Scope CurrentUser
+          Write-Host "✓ Modules installed successfully" -ForegroundColor Green
 
       - name: Execute PowerShell Deployment
         shell: pwsh
