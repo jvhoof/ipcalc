@@ -40,9 +40,10 @@ variable "routing_mode" {
 }
 
 {{subnetVariables}}
+{{spokeVPCVariables}}
 
 # ========================================
-# VPC Network
+# Hub VPC Network
 # ========================================
 
 resource "google_compute_network" "vpc" {
@@ -52,14 +53,26 @@ resource "google_compute_network" "vpc" {
   mtu                     = 1460
   project                 = var.project_id
 
-  description = "Custom VPC created by Terraform"
+  description = "Hub VPC created by Terraform"
 }
 
 # ========================================
-# Subnets
+# Hub Subnets
 # ========================================
 
 {{subnetResources}}
+
+# ========================================
+# Spoke VPCs and Subnets
+# ========================================
+
+{{spokeVPCResources}}
+
+# ========================================
+# VPC Peerings
+# ========================================
+
+{{spokePeeringResources}}
 
 # ========================================
 # Firewall Rules (Example)
@@ -108,3 +121,4 @@ output "vpc_self_link" {
 }
 
 {{subnetOutputs}}
+{{spokeOutputs}}
