@@ -96,6 +96,140 @@
                 When set, subnets will be created with this CIDR prefix instead of automatically dividing the VNet. This allows you to avoid filling the entire VNet address space.
               </div>
             </v-alert>
+
+            <v-divider class="my-4"></v-divider>
+
+            <!-- VNET Peering Configuration -->
+            <div class="text-subtitle-2 font-weight-bold mb-3 d-flex align-center justify-space-between">
+              <div class="d-flex align-center">
+                <v-icon class="mr-2" size="small">mdi-connection</v-icon>
+                <span>VNET Peering (Hub-Spoke Topology)</span>
+              </div>
+              <v-switch
+                v-model="peeringEnabled"
+                :color="themeStyles.button.backgroundColor"
+                density="compact"
+                @update:model-value="onPeeringToggle"
+                hide-details
+              ></v-switch>
+            </div>
+
+            <div v-if="peeringEnabled">
+              <!-- Title and Number of Spoke VNETs on same row -->
+              <v-row class="mb-3 align-center">
+                <v-col cols="12" md="8">
+                  <div class="text-subtitle-2 font-weight-bold">Configure Spoke VNETs</div>
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field
+                    v-model.number="numberOfSpokeVNets"
+                    label="Number of Spoke VNETs"
+                    type="number"
+                    min="1"
+                    max="10"
+                    variant="outlined"
+                    @input="updateSpokeVNets"
+                    density="compact"
+                    hint="Max 10"
+                    persistent-hint
+                  ></v-text-field>
+                </v-col>
+              </v-row>
+
+              <!-- Spoke VNET Configurations -->
+              <v-expansion-panels v-if="spokeVNets.length > 0" class="mt-4" multiple>
+                <v-expansion-panel
+                  v-for="(spoke, index) in spokeVNets"
+                  :key="index"
+                  :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }"
+                >
+                  <v-expansion-panel-title :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
+                    <div class="d-flex align-center">
+                      <v-icon class="mr-2">mdi-network-outline</v-icon>
+                      <span class="font-weight-bold">Spoke VNET {{ index + 1 }}: {{ spoke.cidr || 'Not configured' }}</span>
+                    </div>
+                  </v-expansion-panel-title>
+                  <v-expansion-panel-text :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
+                    <v-row>
+                      <v-col cols="12" md="8">
+                        <v-text-field
+                          v-model="spoke.cidr"
+                          label="Spoke VNET CIDR Block"
+                          placeholder="10.1.0.0/16"
+                          variant="outlined"
+                          @input="() => calculateSpokeSubnets(index)"
+                          density="comfortable"
+                          hint="Enter the spoke VNET address space"
+                          persistent-hint
+                        >
+                          <template v-slot:append>
+                            <v-btn
+                              icon="mdi-chevron-left"
+                              size="small"
+                              variant="text"
+                              @click="decrementSpokeCIDR(index)"
+                            ></v-btn>
+                            <v-btn
+                              icon="mdi-chevron-right"
+                              size="small"
+                              variant="text"
+                              @click="incrementSpokeCIDR(index)"
+                            ></v-btn>
+                          </template>
+                        </v-text-field>
+                      </v-col>
+                      <v-col cols="12" md="4">
+                        <v-text-field
+                          v-model.number="spoke.numberOfSubnets"
+                          label="Number of Subnets"
+                          type="number"
+                          min="1"
+                          max="256"
+                          variant="outlined"
+                          @input="() => calculateSpokeSubnets(index)"
+                          density="comfortable"
+                        ></v-text-field>
+                      </v-col>
+                    </v-row>
+
+                    <!-- Spoke VNET Info -->
+                    <v-card v-if="spoke.vnetInfo" class="mt-2" variant="outlined" :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
+                      <v-card-text :style="{ color: mainPanelTextColor }">
+                        <v-list density="compact" :style="{ backgroundColor: 'transparent', color: mainPanelTextColor }">
+                          <v-list-item>
+                            <v-list-item-title>Spoke VNET Address Space</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.vnetInfo.network }}</v-list-item-subtitle>
+                          </v-list-item>
+                          <v-list-item>
+                            <v-list-item-title>Total IP Addresses</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.vnetInfo.totalIPs.toLocaleString() }}</v-list-item-subtitle>
+                          </v-list-item>
+                          <v-list-item>
+                            <v-list-item-title>Subnets Created</v-list-item-title>
+                            <v-list-item-subtitle>{{ spoke.subnets?.length || 0 }}</v-list-item-subtitle>
+                          </v-list-item>
+                        </v-list>
+                      </v-card-text>
+                    </v-card>
+
+                    <!-- Error Message for Spoke -->
+                    <v-alert v-if="spoke.error" type="error" class="mt-2" density="compact">
+                      {{ spoke.error }}
+                    </v-alert>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
+
+              <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start">
+                <div class="text-caption">
+                  <strong>Hub-Spoke Topology:</strong><br>
+                  • The main VNET acts as the hub, connecting to multiple spoke VNETs via peering<br>
+                  • Spoke VNETs should use non-overlapping CIDR blocks<br>
+                  • Each peering connection allows bi-directional traffic between hub and spoke<br>
+                  • Consider enabling gateway transit if using VPN/ExpressRoute in the hub
+                </div>
+              </v-alert>
+            </div>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
@@ -294,150 +428,6 @@
 
             <div class="text-body-2">
               <strong>Usable Range:</strong> {{ subnet.usableRange }}
-            </div>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
-
-      <!-- VNET Peering Configuration -->
-      <v-expansion-panels class="mt-4 mb-4" :style="{ backgroundColor: mainPanelBgColor }">
-        <v-expansion-panel :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
-          <v-expansion-panel-title class="text-body-2" :style="{ color: mainPanelTextColor }">
-            <template v-slot:default="{ expanded }">
-              <div class="d-flex align-center justify-space-between" style="width: 100%;">
-                <div class="d-flex align-center">
-                  <v-icon class="mr-2" size="small">mdi-connection</v-icon>
-                  <span>VNET Peering (Hub-Spoke Topology)</span>
-                </div>
-                <v-switch
-                  v-model="peeringEnabled"
-                  :color="themeStyles.button.backgroundColor"
-                  density="compact"
-                  @update:model-value="onPeeringToggle"
-                  hide-details
-                  class="mr-4"
-                  @click.stop
-                ></v-switch>
-              </div>
-            </template>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
-
-            <div v-if="peeringEnabled">
-              <!-- Title and Number of Spoke VNETs on same row -->
-              <v-row class="mb-3 align-center">
-                <v-col cols="12" md="8">
-                  <div class="text-subtitle-2 font-weight-bold">Configure Spoke VNETs</div>
-                </v-col>
-                <v-col cols="12" md="4">
-                  <v-text-field
-                    v-model.number="numberOfSpokeVNets"
-                    label="Number of Spoke VNETs"
-                    type="number"
-                    min="1"
-                    max="10"
-                    variant="outlined"
-                    @input="updateSpokeVNets"
-                    density="compact"
-                    hint="Max 10"
-                    persistent-hint
-                  ></v-text-field>
-                </v-col>
-              </v-row>
-
-              <!-- Spoke VNET Configurations -->
-              <v-expansion-panels v-if="spokeVNets.length > 0" class="mt-4" multiple>
-                <v-expansion-panel
-                  v-for="(spoke, index) in spokeVNets"
-                  :key="index"
-                  :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }"
-                >
-                  <v-expansion-panel-title :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
-                    <div class="d-flex align-center">
-                      <v-icon class="mr-2">mdi-network-outline</v-icon>
-                      <span class="font-weight-bold">Spoke VNET {{ index + 1 }}: {{ spoke.cidr || 'Not configured' }}</span>
-                    </div>
-                  </v-expansion-panel-title>
-                  <v-expansion-panel-text :style="{ backgroundColor: nestedPanelBgColor, color: nestedPanelTextColor }">
-                    <v-row>
-                      <v-col cols="12" md="8">
-                        <v-text-field
-                          v-model="spoke.cidr"
-                          label="Spoke VNET CIDR Block"
-                          placeholder="10.1.0.0/16"
-                          variant="outlined"
-                          @input="() => calculateSpokeSubnets(index)"
-                          density="comfortable"
-                          hint="Enter the spoke VNET address space"
-                          persistent-hint
-                        >
-                          <template v-slot:append>
-                            <v-btn
-                              icon="mdi-chevron-left"
-                              size="small"
-                              variant="text"
-                              @click="decrementSpokeCIDR(index)"
-                            ></v-btn>
-                            <v-btn
-                              icon="mdi-chevron-right"
-                              size="small"
-                              variant="text"
-                              @click="incrementSpokeCIDR(index)"
-                            ></v-btn>
-                          </template>
-                        </v-text-field>
-                      </v-col>
-                      <v-col cols="12" md="4">
-                        <v-text-field
-                          v-model.number="spoke.numberOfSubnets"
-                          label="Number of Subnets"
-                          type="number"
-                          min="1"
-                          max="256"
-                          variant="outlined"
-                          @input="() => calculateSpokeSubnets(index)"
-                          density="comfortable"
-                        ></v-text-field>
-                      </v-col>
-                    </v-row>
-
-                    <!-- Spoke VNET Info -->
-                    <v-card v-if="spoke.vnetInfo" class="mt-2" variant="outlined" :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
-                      <v-card-text :style="{ color: mainPanelTextColor }">
-                        <v-list density="compact" :style="{ backgroundColor: 'transparent', color: mainPanelTextColor }">
-                          <v-list-item>
-                            <v-list-item-title>Spoke VNET Address Space</v-list-item-title>
-                            <v-list-item-subtitle>{{ spoke.vnetInfo.network }}</v-list-item-subtitle>
-                          </v-list-item>
-                          <v-list-item>
-                            <v-list-item-title>Total IP Addresses</v-list-item-title>
-                            <v-list-item-subtitle>{{ spoke.vnetInfo.totalIPs.toLocaleString() }}</v-list-item-subtitle>
-                          </v-list-item>
-                          <v-list-item>
-                            <v-list-item-title>Subnets Created</v-list-item-title>
-                            <v-list-item-subtitle>{{ spoke.subnets?.length || 0 }}</v-list-item-subtitle>
-                          </v-list-item>
-                        </v-list>
-                      </v-card-text>
-                    </v-card>
-
-                    <!-- Error Message for Spoke -->
-                    <v-alert v-if="spoke.error" type="error" class="mt-2" density="compact">
-                      {{ spoke.error }}
-                    </v-alert>
-                  </v-expansion-panel-text>
-                </v-expansion-panel>
-              </v-expansion-panels>
-
-              <v-alert density="compact" class="mt-4" :style="themeStyles.infoBox" border="start">
-                <div class="text-caption">
-                  <strong>Hub-Spoke Topology:</strong><br>
-                  • The main VNET acts as the hub, connecting to multiple spoke VNETs via peering<br>
-                  • Spoke VNETs should use non-overlapping CIDR blocks<br>
-                  • Each peering connection allows bi-directional traffic between hub and spoke<br>
-                  • Consider enabling gateway transit if using VPN/ExpressRoute in the hub
-                </div>
-              </v-alert>
             </div>
           </v-expansion-panel-text>
         </v-expansion-panel>
