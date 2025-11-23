@@ -90,7 +90,29 @@ The built files will be in the `dist/` directory.
 
 ## CLI Usage
 
-### Quick Start
+### Using the Bash Wrapper (Recommended)
+
+For easier CLI access, use the included bash wrapper script that automatically checks for dependencies:
+
+```bash
+# Make the wrapper executable (one-time setup)
+chmod +x ./ipcalc
+
+# Run the CLI
+./ipcalc --help
+./ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 4
+```
+
+The wrapper script will:
+- ✓ Check if Node.js is installed (minimum version 16.0.0)
+- ✓ Verify npm and npx are available
+- ✓ Ensure dependencies are installed in `node_modules`
+- ✓ Validate source files exist
+- ✓ Provide helpful error messages with installation instructions if any checks fail
+
+### Alternative: Using npm Scripts
+
+You can also run the CLI through npm:
 
 ```bash
 npm run cli -- --help
@@ -103,26 +125,28 @@ npm run cli -- --help
 Display detailed subnet calculations:
 
 ```bash
-# Azure
+# Using the bash wrapper
+./ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 4
+./ipcalc --provider aws --cidr 10.0.0.0/16 --subnets 3
+./ipcalc --provider gcp --cidr 10.128.0.0/20 --subnets 2
+
+# Or using npm scripts
 npm run cli -- --provider azure --cidr 10.0.0.0/16 --subnets 4
-
-# AWS
 npm run cli -- --provider aws --cidr 10.0.0.0/16 --subnets 3
-
-# GCP
 npm run cli -- --provider gcp --cidr 10.128.0.0/20 --subnets 2
 ```
 
 #### Generate Terraform Code
 
 ```bash
-# Azure Terraform
+# Using the bash wrapper
+./ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 2 --output terraform
+./ipcalc --provider aws --cidr 10.0.0.0/16 --subnets 3 --output terraform
+./ipcalc --provider gcp --cidr 10.128.0.0/20 --subnets 2 --output terraform
+
+# Or using npm scripts
 npm run cli -- --provider azure --cidr 10.0.0.0/16 --subnets 2 --output terraform
-
-# AWS Terraform
 npm run cli -- --provider aws --cidr 10.0.0.0/16 --subnets 3 --output terraform
-
-# GCP Terraform
 npm run cli -- --provider gcp --cidr 10.128.0.0/20 --subnets 2 --output terraform
 ```
 
