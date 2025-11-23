@@ -679,6 +679,9 @@ const calculateVPC = (): void => {
     errorMessage.value = 'Error calculating subnets. Please check your input.'
     console.error(error)
   }
+
+  // Update spoke VPC CIDRs to follow the hub VPC pattern
+  updateSpokeCIDRsFromHub()
 }
 
 const generateGcloudCLI = async (): Promise<void> => {
@@ -755,6 +758,32 @@ const onPeeringToggle = (): void => {
   }
 }
 
+const generateSpokeCIDR = (spokeIndex: number): string => {
+  // Parse hub VPC CIDR to generate spoke CIDR that follows the same pattern
+  const parsed = parseCIDR(vpcCidr.value)
+  if (!parsed) {
+    // Fallback to default pattern if hub CIDR is invalid
+    return `10.${spokeIndex + 1}.0.0/16`
+  }
+
+  const { ip, prefix } = parsed
+
+  // Calculate the hub network number
+  const hubNetworkNum = ipToNumber(ip) & (0xFFFFFFFF << (32 - prefix))
+
+  // Calculate network size based on prefix
+  const networkSize = Math.pow(2, 32 - prefix)
+
+  // Calculate spoke network by adding (spokeIndex + 1) * networkSize to hub
+  const spokeNetworkNum = hubNetworkNum + ((spokeIndex + 1) * networkSize)
+
+  // Convert back to IP
+  const spokeIP = numberToIP(spokeNetworkNum)
+
+  // Return spoke CIDR with same prefix as hub
+  return `${spokeIP.join('.')}/${prefix}`
+}
+
 const updateSpokeVPCs = (): void => {
   const currentCount = spokeVPCs.value.length
   const targetCount = Math.min(Math.max(1, numberOfSpokeVPCs.value || 1), 10)
@@ -763,10 +792,8 @@ const updateSpokeVPCs = (): void => {
   if (targetCount > currentCount) {
     // Add new spoke VPCs
     for (let i = currentCount; i < targetCount; i++) {
-      // Generate a default CIDR for the spoke (different from hub)
-      const baseOctet = 10 + i + 1 // Start from 10.1.0.0, 10.2.0.0, etc.
       spokeVPCs.value.push({
-        cidr: `${baseOctet}.0.0.0/16`,
+        cidr: generateSpokeCIDR(i),
         numberOfSubnets: 2,
         vpcInfo: null,
         subnets: [],
@@ -779,6 +806,19 @@ const updateSpokeVPCs = (): void => {
   }
 
   // Calculate all spoke VPCs
+  calculateSpokeVPCs()
+}
+
+const updateSpokeCIDRsFromHub = (): void => {
+  // Update all existing spoke VPCs to follow the new hub CIDR pattern
+  if (!peeringEnabled.value || spokeVPCs.value.length === 0) {
+    return
+  }
+
+  spokeVPCs.value.forEach((spoke, index) => {
+    spoke.cidr = generateSpokeCIDR(index)
+  })
+
   calculateSpokeVPCs()
 }
 
