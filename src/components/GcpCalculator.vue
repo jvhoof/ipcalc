@@ -91,31 +91,23 @@
                 When set, subnets will be created with this CIDR prefix instead of automatically dividing the VPC. This allows you to avoid filling the entire VPC address space.
               </div>
             </v-alert>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
 
-      <!-- VPC Peering Configuration -->
-      <v-expansion-panels class="mt-4 mb-4" :style="{ backgroundColor: mainPanelBgColor }">
-        <v-expansion-panel :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
-          <v-expansion-panel-title class="text-body-2" :style="{ color: mainPanelTextColor }">
-            <div class="d-flex align-center justify-space-between" style="width: 100%;">
+            <!-- VPC Peering Configuration -->
+            <v-divider class="my-4"></v-divider>
+            <div class="text-subtitle-2 font-weight-bold mb-3 d-flex align-center justify-space-between">
               <div class="d-flex align-center">
                 <v-icon class="mr-2" size="small">mdi-connection</v-icon>
                 <span>VPC Peering (Hub-Spoke Topology)</span>
               </div>
               <v-switch
                 v-model="peeringEnabled"
-                color="primary"
                 density="compact"
                 @update:model-value="onPeeringToggle"
                 hide-details
-                class="mr-4"
                 @click.stop
+                :color="isDarkMode ? '#4285f4' : '#1a73e8'"
               ></v-switch>
             </div>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text :style="{ backgroundColor: mainPanelBgColor, color: mainPanelTextColor }">
 
             <div v-if="peeringEnabled">
               <!-- Title and Number of Spoke VPCs on same row -->
