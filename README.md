@@ -53,6 +53,41 @@ cd ipcalc
 npm install
 ```
 
+### Quick Start with Bash Wrapper
+
+For convenience, a bash wrapper script (`ipcalc.sh`) is provided that automatically checks for all required dependencies and provides installation instructions if anything is missing.
+
+**Features:**
+- Checks for Node.js (version 18+)
+- Verifies npm installation
+- Ensures project dependencies are installed
+- Provides helpful installation instructions for missing components
+- Automatically runs the CLI with your arguments
+
+**Usage:**
+
+```bash
+# Make the script executable (first time only)
+chmod +x ipcalc.sh
+
+# Show help
+./ipcalc.sh --help
+
+# Run calculations
+./ipcalc.sh --provider azure --cidr 10.0.0.0/16 --subnets 4
+
+# Generate IaC code
+./ipcalc.sh --provider aws --cidr 10.0.0.0/16 --subnets 3 --output terraform
+```
+
+The wrapper script will:
+1. Check if Node.js 18+ is installed
+2. Check if npm is available
+3. Verify project dependencies are installed
+4. Run the ipcalc CLI with your arguments
+
+If any dependency is missing, it will display clear installation instructions for your operating system.
+
 ## Web Interface Usage
 
 ### Development
@@ -93,6 +128,10 @@ The built files will be in the `dist/` directory.
 ### Quick Start
 
 ```bash
+# Using the bash wrapper (recommended for first-time users)
+./ipcalc.sh --help
+
+# Or using npm directly
 npm run cli -- --help
 ```
 
@@ -426,6 +465,7 @@ ipcalc/
 - `npm run preview` - Preview production build locally
 - `npm run typecheck` - Run TypeScript type checking
 - `npm run cli` - Run CLI tool (add `-- --help` for CLI help)
+- `./ipcalc.sh` - Bash wrapper script with dependency checks (recommended)
 
 ## Development
 
