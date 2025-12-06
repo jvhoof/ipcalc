@@ -353,7 +353,7 @@ jobs:
             --subnets 2 \
             --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
             --spoke-subnets "2,2,2" \
-            --output cli \
+            --output gcloud \
             --file /tmp/deploy-vpc-peering-generated.sh
 
           # Set unique names for this job
