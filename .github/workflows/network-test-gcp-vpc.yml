@@ -377,12 +377,27 @@ jobs:
       - name: Validate VPC Peering
         run: |
           echo "🔍 Validating VPC peering connections..."
+
+          # First, list all peerings for debugging
+          echo "All peerings on hub VPC:"
+          gcloud compute networks peerings list \
+            --network="${{ env.VPC_NAME }}" \
+            --format="table(name,network,peerNetwork,state)"
+
           for spoke_num in 1 2 3; do
             PEERING_NAME="hub-to-spoke${spoke_num}"
-            PEERING_STATUS=$(gcloud compute networks peerings list \
+
+            # Get all peerings and grep for the specific one
+            PEERING_INFO=$(gcloud compute networks peerings list \
               --network="${{ env.VPC_NAME }}" \
-              --format="value(state)" \
-              --filter="name=$PEERING_NAME" 2>/dev/null || echo "")
+              --format="csv[no-heading](name,state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
+
+            if [ -z "$PEERING_INFO" ]; then
+              echo "❌ Peering $PEERING_NAME not found!"
+              exit 1
+            fi
+
+            PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f2)
 
             if [ "$PEERING_STATUS" != "ACTIVE" ]; then
               echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
@@ -568,12 +583,27 @@ jobs:
       - name: Validate VPC Peering
         run: |
           echo "🔍 Validating VPC peering connections..."
+
+          # First, list all peerings for debugging
+          echo "All peerings on hub VPC:"
+          gcloud compute networks peerings list \
+            --network="${{ env.VPC_NAME }}" \
+            --format="table(name,network,peerNetwork,state)"
+
           for spoke_num in 1 2 3; do
             PEERING_NAME="hub-to-spoke${spoke_num}"
-            PEERING_STATUS=$(gcloud compute networks peerings list \
+
+            # Get all peerings and grep for the specific one
+            PEERING_INFO=$(gcloud compute networks peerings list \
               --network="${{ env.VPC_NAME }}" \
-              --format="value(state)" \
-              --filter="name=$PEERING_NAME" 2>/dev/null || echo "")
+              --format="csv[no-heading](name,state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
+
+            if [ -z "$PEERING_INFO" ]; then
+              echo "❌ Peering $PEERING_NAME not found!"
+              exit 1
+            fi
+
+            PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f2)
 
             if [ "$PEERING_STATUS" != "ACTIVE" ]; then
               echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
