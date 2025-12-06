@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+
+#
+# IP Calculator CLI Wrapper
+# This wrapper script checks for required dependencies and provides
+# helpful error messages before running the ipcalc CLI.
+#
+
+set -e
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Function to print colored messages
+print_error() {
+    echo -e "${RED}ERROR:${NC} $1" >&2
+}
+
+print_warning() {
+    echo -e "${YELLOW}WARNING:${NC} $1" >&2
+}
+
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to get Node.js version
+get_node_version() {
+    node --version 2>/dev/null | sed 's/v//'
+}
+
+# Function to compare versions (returns 0 if version1 >= version2)
+version_gte() {
+    printf '%s\n%s\n' "$2" "$1" | sort -V -C
+}
+
+# Check for Node.js
+check_nodejs() {
+    if ! command_exists node; then
+        print_error "Node.js is not installed"
+        echo ""
+        echo "ipcalc requires Node.js to run. Please install Node.js:"
+        echo ""
+        echo "  • Download from: https://nodejs.org/"
+        echo "  • Or use a version manager like nvm:"
+        echo "    - nvm: https://github.com/nvm-sh/nvm"
+        echo "    - fnm: https://github.com/Schniz/fnm"
+        echo ""
+        echo "Recommended version: Node.js 18.x or higher"
+        echo ""
+        return 1
+    fi
+
+    local node_version
+    node_version=$(get_node_version)
+
+    # Minimum required version is 16.0.0
+    if ! version_gte "$node_version" "16.0.0"; then
+        print_error "Node.js version $node_version is too old"
+        echo ""
+        echo "ipcalc requires Node.js 16.0.0 or higher"
+        echo "Current version: $node_version"
+        echo ""
+        echo "Please update Node.js:"
+        echo "  • Download from: https://nodejs.org/"
+        echo ""
+        return 1
+    fi
+
+    print_success "Node.js $node_version"
+    return 0
+}
+
+# Check for npm
+check_npm() {
+    if ! command_exists npm; then
+        print_error "npm is not installed"
+        echo ""
+        echo "npm is required to install dependencies"
+        echo "npm typically comes bundled with Node.js"
+        echo ""
+        echo "Please reinstall Node.js from: https://nodejs.org/"
+        echo ""
+        return 1
+    fi
+
+    local npm_version
+    npm_version=$(npm --version 2>/dev/null)
+    print_success "npm $npm_version"
+    return 0
+}
+
+# Check for npx
+check_npx() {
+    if ! command_exists npx; then
+        print_error "npx is not installed"
+        echo ""
+        echo "npx is required to run the CLI"
+        echo "npx typically comes bundled with npm 5.2.0+"
+        echo ""
+        echo "Please update npm:"
+        echo "  npm install -g npm@latest"
+        echo ""
+        return 1
+    fi
+
+    print_success "npx available"
+    return 0
+}
+
+# Check if dependencies are installed
+check_dependencies() {
+    if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
+        print_error "Dependencies are not installed"
+        echo ""
+        echo "Please install dependencies by running:"
+        echo ""
+        echo -e "  ${GREEN}cd $SCRIPT_DIR${NC}"
+        echo -e "  ${GREEN}npm install${NC}"
+        echo ""
+        return 1
+    fi
+
+    # Check for critical dependencies
+    local missing_deps=()
+
+    if [ ! -d "$SCRIPT_DIR/node_modules/tsx" ]; then
+        missing_deps+=("tsx")
+    fi
+
+    if [ ! -d "$SCRIPT_DIR/node_modules/typescript" ]; then
+        missing_deps+=("typescript")
+    fi
+
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        print_error "Some dependencies are missing: ${missing_deps[*]}"
+        echo ""
+        echo "Please reinstall dependencies by running:"
+        echo ""
+        echo -e "  ${GREEN}cd $SCRIPT_DIR${NC}"
+        echo -e "  ${GREEN}npm install${NC}"
+        echo ""
+        return 1
+    fi
+
+    print_success "Dependencies installed"
+    return 0
+}
+
+# Check if required source files exist
+check_source_files() {
+    if [ ! -f "$SCRIPT_DIR/bin/ipcalc.js" ]; then
+        print_error "CLI entry point not found: bin/ipcalc.js"
+        echo ""
+        echo "The ipcalc installation appears to be corrupted."
+        echo "Please reinstall or clone the repository."
+        echo ""
+        return 1
+    fi
+
+    if [ ! -f "$SCRIPT_DIR/src/cli/index.ts" ]; then
+        print_error "CLI source not found: src/cli/index.ts"
+        echo ""
+        echo "The ipcalc installation appears to be corrupted."
+        echo "Please reinstall or clone the repository."
+        echo ""
+        return 1
+    fi
+
+    print_success "Source files found"
+    return 0
+}
+
+# Main function
+main() {
+    # If --help or -h is passed, show help without checks
+    for arg in "$@"; do
+        if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+            # Run the CLI directly for help
+            if command_exists node && [ -f "$SCRIPT_DIR/bin/ipcalc.js" ]; then
+                node "$SCRIPT_DIR/bin/ipcalc.js" "$@"
+                exit $?
+            fi
+        fi
+    done
+
+    # Run all checks
+    local checks_failed=0
+
+    echo ""
+    print_info "Checking ipcalc dependencies..."
+    echo ""
+
+    check_nodejs || checks_failed=1
+    check_npm || checks_failed=1
+    check_npx || checks_failed=1
+    check_dependencies || checks_failed=1
+    check_source_files || checks_failed=1
+
+    # Exit if any checks failed
+    if [ $checks_failed -eq 1 ]; then
+        echo ""
+        print_error "Dependency checks failed. Please resolve the issues above."
+        echo ""
+        exit 1
+    fi
+
+    echo ""
+    print_success "All checks passed! Running ipcalc CLI..."
+    echo ""
+
+    # Run the actual CLI
+    exec node "$SCRIPT_DIR/bin/ipcalc.js" "$@"
+}
+
+# Run main function with all arguments
+main "$@"
