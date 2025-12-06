@@ -38,7 +38,7 @@ interface CliArgs {
   output?: 'info' | 'cli' | 'terraform' | 'bicep' | 'arm' | 'powershell' | 'cloudformation' | 'gcloud' | 'oci' | 'aliyun'
   file?: string
   help?: boolean
-  // VNET Peering options (Azure only)
+  // Network Peering options (Azure and GCP)
   spokeCidrs?: string[]
   spokeSubnets?: number[]
 }
@@ -80,12 +80,13 @@ Optional Arguments:
   --file <path>         Write output to file instead of stdout
   --help                Show this help message
 
-Azure VNET Peering Options (Hub-Spoke Topology):
-  --spoke-cidrs <cidrs>    Comma-separated list of spoke VNET CIDRs
+Network Peering Options (Hub-Spoke Topology):
+  --spoke-cidrs <cidrs>    Comma-separated list of spoke VPC/VNET CIDRs
                            (e.g., "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16")
+                           Supported for: Azure, GCP
   --spoke-subnets <counts> Comma-separated list of subnet counts per spoke
                            (e.g., "2,2,2" - must match number of spoke CIDRs)
-                           If omitted, defaults to 2 subnets per spoke VNET
+                           If omitted, defaults to 2 subnets per spoke VPC/VNET
 
 Examples:
   # Show network information
@@ -107,6 +108,11 @@ Examples:
   ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 2 \\
     --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \\
     --spoke-subnets "2,2,2" --output terraform
+
+  # GCP with VPC peering (hub-spoke topology)
+  ipcalc --provider gcp --cidr 10.0.0.0/16 --subnets 2 \\
+    --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \\
+    --spoke-subnets "2,2,2" --output gcloud
 `)
 }
 
@@ -190,18 +196,18 @@ function validateArgs(args: CliArgs): string | null {
     return `Invalid output type for ${args.provider}. Must be one of: ${OUTPUTS_BY_PROVIDER[args.provider].join(', ')}`
   }
 
-  // Validate VNET peering options (Azure only)
+  // Validate network peering options (Azure and GCP)
   if (args.spokeCidrs || args.spokeSubnets) {
-    if (args.provider !== 'azure') {
-      return 'VNET peering options (--spoke-cidrs, --spoke-subnets) are only supported for Azure provider'
+    if (args.provider !== 'azure' && args.provider !== 'gcp') {
+      return 'Network peering options (--spoke-cidrs, --spoke-subnets) are only supported for Azure and GCP providers'
     }
 
     if (args.spokeCidrs && args.spokeCidrs.length === 0) {
-      return 'At least one spoke VNET CIDR is required when using --spoke-cidrs'
+      return 'At least one spoke VPC/VNET CIDR is required when using --spoke-cidrs'
     }
 
     if (args.spokeCidrs && args.spokeCidrs.length > 10) {
-      return 'Maximum of 10 spoke VNETs allowed'
+      return 'Maximum of 10 spoke VPCs/VNETs allowed'
     }
 
     if (args.spokeSubnets && args.spokeCidrs && args.spokeSubnets.length !== args.spokeCidrs.length) {
@@ -274,11 +280,17 @@ function generateOutput(args: CliArgs, subnets: SubnetInfo[], spokeVNets: any[])
     return formatNetworkInfo(args.cidr, subnets, args.provider)
   }
 
-  const templateData = {
+  const templateData: any = {
     vnetCidr: args.cidr,
     subnets: subnets,
-    peeringEnabled: spokeVNets.length > 0,
-    spokeVNets: spokeVNets
+    peeringEnabled: spokeVNets.length > 0
+  }
+
+  // Azure uses spokeVNets, GCP uses spokeVPCs
+  if (args.provider === 'azure') {
+    templateData.spokeVNets = spokeVNets
+  } else if (args.provider === 'gcp') {
+    templateData.spokeVPCs = spokeVNets
   }
 
   // Azure outputs
