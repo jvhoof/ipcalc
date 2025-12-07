@@ -406,6 +406,28 @@ jobs:
             echo "✅ Peering $PEERING_NAME is active"
           done
 
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="spoke${spoke_num}-to-hub"
+
+            # Get all peerings and grep for the specific one
+            PEERING_INFO=$(gcloud compute networks peerings list \
+              --flatten="peerings[]" \
+              --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
+
+            if [ -z "$PEERING_INFO" ]; then
+              echo "❌ Peering $PEERING_NAME not found!"
+              exit 1
+            fi
+
+            PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f3)
+
+            if [ "$PEERING_STATUS" != "ACTIVE" ]; then
+              echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is active"
+          done
+
           echo "✅ All VPC peerings are active!"
 
       - name: Cleanup Resources
@@ -595,6 +617,28 @@ jobs:
             # Get all peerings and grep for the specific one
             PEERING_INFO=$(gcloud compute networks peerings list \
               --network="${{ env.VPC_NAME }}" \
+              --flatten="peerings[]" \
+              --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
+
+            if [ -z "$PEERING_INFO" ]; then
+              echo "❌ Peering $PEERING_NAME not found!"
+              exit 1
+            fi
+
+            PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f3)
+
+            if [ "$PEERING_STATUS" != "ACTIVE" ]; then
+              echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is active"
+          done
+
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="spoke${spoke_num}-to-hub"
+
+            # Get all peerings and grep for the specific one
+            PEERING_INFO=$(gcloud compute networks peerings list \
               --flatten="peerings[]" \
               --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
 
