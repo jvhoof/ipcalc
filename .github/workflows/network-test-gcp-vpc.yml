@@ -415,16 +415,12 @@ jobs:
               --flatten="peerings[]" \
               --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
 
-            echo "Peering info: [$PEERING_INFO]"
-
             if [ -z "$PEERING_INFO" ]; then
               echo "❌ Peering $PEERING_NAME not found!"
               exit 1
             fi
 
             PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f3)
-
-            echo "Peering status: [$PEERING_STATUS]"
 
             if [ "$PEERING_STATUS" != "ACTIVE" ]; then
               echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
@@ -649,16 +645,12 @@ jobs:
               --flatten="peerings[]" \
               --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
 
-            echo "Peering info: [$PEERING_INFO]"
-
             if [ -z "$PEERING_INFO" ]; then
               echo "❌ Peering $PEERING_NAME not found!"
               exit 1
             fi
 
             PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f3)
-
-            echo "Peering status: [$PEERING_STATUS]"
 
             if [ "$PEERING_STATUS" != "ACTIVE" ]; then
               echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
