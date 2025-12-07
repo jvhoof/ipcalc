@@ -619,6 +619,8 @@ jobs:
               --flatten="peerings[]" \
               --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
 
+            echo "Peering info: $PEERING_INFO"
+
             if [ -z "$PEERING_INFO" ]; then
               echo "❌ Peering $PEERING_NAME not found!"
               exit 1
