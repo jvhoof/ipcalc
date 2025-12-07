@@ -411,6 +411,7 @@ jobs:
 
             # Get all peerings and grep for the specific one
             PEERING_INFO=$(gcloud compute networks peerings list \
+              --network="${{ env.VPC_NAME }}-spoke${spoke_num}" \
               --flatten="peerings[]" \
               --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
 
@@ -644,6 +645,7 @@ jobs:
 
             # Get all peerings and grep for the specific one
             PEERING_INFO=$(gcloud compute networks peerings list \
+              --network="${{ env.VPC_NAME }}-spoke${spoke_num}" \
               --flatten="peerings[]" \
               --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
 
