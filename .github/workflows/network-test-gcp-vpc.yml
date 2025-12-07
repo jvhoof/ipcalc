@@ -608,8 +608,7 @@ jobs:
 
           # First, list all peerings for debugging
           echo "All peerings on hub VPC:"
-          gcloud compute networks peerings list \
-            --network="${{ env.VPC_NAME }}"
+          gcloud compute networks peerings list
 
           for spoke_num in 1 2 3; do
             PEERING_NAME="hub-to-spoke${spoke_num}"
