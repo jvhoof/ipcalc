@@ -80,8 +80,8 @@ export function processAzureTerraformTemplate(templateContent: string, data: Tem
   data.subnets.forEach((subnet, index) => {
     subnetResources += `resource "azurerm_subnet" "subnet${index + 1}" {\n`
     subnetResources += `  name                 = "\${var.prefix}-subnet${index + 1}"\n`
-    subnetResources += `  resource_group_name  = azurerm_resource_group.main.name\n`
-    subnetResources += `  virtual_network_name = azurerm_virtual_network.main.name\n`
+    subnetResources += `  resource_group_name  = azurerm_resource_group.rg.name\n`
+    subnetResources += `  virtual_network_name = azurerm_virtual_network.vnet.name\n`
     subnetResources += `  address_prefixes     = [var.subnet${index + 1}_cidr]\n`
     subnetResources += `}\n\n`
   })

@@ -23,7 +23,7 @@ import {
 } from './templateProcessor'
 
 // Re-export for backwards compatibility
-export type { TemplateData } from './templateProcessor'
+export type { TemplateData, Subnet } from './templateProcessor'
 
 /**
  * Load and process Azure CLI template

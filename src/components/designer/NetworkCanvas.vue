@@ -9,6 +9,7 @@
       :snap-to-grid="true"
       :snap-grid="[15, 15]"
       class="vue-flow-canvas"
+      @node-click="(event) => emit('nodeClick', event)"
     >
       <Background
         :pattern-color="isDarkMode ? '#2a2a2a' : '#e0e0e0'"
@@ -164,6 +165,10 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
+
+const emit = defineEmits<{
+  nodeClick: [event: { node: Node }]
+}>()
 
 const isDarkMode = inject<Ref<boolean>>('isDarkMode', ref(false))
 
