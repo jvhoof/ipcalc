@@ -14,6 +14,7 @@
             <GcpCalculator v-if="activeTab === 'gcp'" />
             <OracleCalculator v-if="activeTab === 'oracle'" />
             <AlicloudCalculator v-if="activeTab === 'alicloud'" />
+            <AzureNetworkDesigner v-if="activeTab === 'azure-designer'" />
           </v-col>
         </v-row>
       </v-container>
@@ -58,6 +59,11 @@
         <span>Alibaba</span>
       </v-btn>
 
+      <v-btn value="azure-designer" class="nav-btn d-none d-md-flex" :style="{ color: navBarTextColor }">
+        <v-icon :style="{ color: navBarTextColor }">mdi-pencil-ruler</v-icon>
+        <span>Network Designer</span>
+      </v-btn>
+
       <!-- Overflow menu for small screens only -->
       <v-menu location="top">
         <template v-slot:activator="{ props }">
@@ -78,6 +84,12 @@
               <v-icon>mdi-cloud</v-icon>
             </template>
             <v-list-item-title>Alibaba Cloud</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="activeTab = 'azure-designer'" :class="{ 'v-list-item--active': activeTab === 'azure-designer' }">
+            <template v-slot:prepend>
+              <v-icon>mdi-pencil-ruler</v-icon>
+            </template>
+            <v-list-item-title>Network Designer</v-list-item-title>
           </v-list-item>
         </v-list>
       </v-menu>
@@ -111,6 +123,7 @@ import AwsCalculator from './components/AwsCalculator.vue'
 import GcpCalculator from './components/GcpCalculator.vue'
 import OracleCalculator from './components/OracleCalculator.vue'
 import AlicloudCalculator from './components/AlicloudCalculator.vue'
+import AzureNetworkDesigner from './components/AzureNetworkDesigner.vue'
 import {
   getBackgroundColor,
   getTitleColor,

@@ -49,6 +49,59 @@ export interface CloudTheme {
 }
 
 export const cloudThemes: Record<string, CloudTheme> = {
+  'azure-designer': {
+    name: 'Azure Network Designer',
+    light: {
+      // Component-level colors
+      primary: '#104581',
+      buttonBackground: '#104581',
+      buttonText: '#FFFFFF',
+      vpcInfoHeader: '#104581',
+      vpcInfoHeaderText: '#FFFFFF',
+      subnetChip: '#0078D4',
+      subnetChipText: '#FFFFFF',
+      usableIpsText: '#0078D4',
+      dialogHeader: '#104581',
+      dialogHeaderText: '#FFFFFF',
+      infoBoxBackground: '#E6F2FF',
+      infoBoxText: '#003D7A',
+      infoBoxBorder: '#0078D4',
+      alertBoxBackground: '#D1E7FF',
+      alertBoxText: '#003D7A',
+      alertBoxBorder: '#0078D4',
+      // App-level colors
+      backgroundColor: '#0078D4',
+      titleColor: '#FFFFFF',
+    },
+    dark: {
+      // Component-level colors
+      primary: '#3B9FF5',
+      buttonBackground: '#2B6DAE',
+      buttonText: '#FFFFFF',
+      vpcInfoHeader: '#2B6DAE',
+      vpcInfoHeaderText: '#E0E0E0',
+      subnetChip: '#2B6DAE',
+      subnetChipText: '#FFFFFF',
+      usableIpsText: '#3B9FF5',
+      dialogHeader: '#1A4F7A',
+      dialogHeaderText: '#E0E0E0',
+      infoBoxBackground: '#4A4A4A',
+      infoBoxText: '#F5F5F5',
+      infoBoxBorder: '#F5F5F5',
+      alertBoxBackground: '#F5F5F5',
+      alertBoxText: '#B3D9FF',
+      alertBoxBorder: '#3B9FF5',
+      // App-level colors
+      backgroundColor: '#003055',
+      titleColor: '#F5F5F5',
+      navBarBackground: '#212121',
+      navBarText: '#F5F5F5',
+      mainPanelBackground: '#424242',
+      mainPanelText: '#F5F5F5',
+      nestedPanelBackground: '#424242',
+      nestedPanelText: '#F5F5F5',
+    },
+  },
   azure: {
     name: 'Microsoft Azure',
     light: {
