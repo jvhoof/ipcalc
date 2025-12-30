@@ -7,6 +7,14 @@ export default defineConfig({
     vue(),
     vuetify({ autoImport: true })
   ],
+  optimizeDeps: {
+    include: [
+      '@vue-flow/core',
+      '@vue-flow/background',
+      '@vue-flow/controls',
+      '@vue-flow/minimap'
+    ]
+  },
   server: {
     port: 3000,
     open: true
