@@ -27,3 +27,9 @@ yarn-error.log*
 
 # next.js
 .next
+
+# Python
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
