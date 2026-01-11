@@ -2,6 +2,7 @@ on:
   pull_request:
     paths-ignore:
       - '.github/workflows/*.yml'
+      - 'skills/**'
 
 permissions:
   contents: read

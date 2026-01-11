@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths-ignore:
       - '.github/workflows/*.yml'
+      - 'skills/**'
 
   # Run the scan evey day at 7:00am
   schedule:

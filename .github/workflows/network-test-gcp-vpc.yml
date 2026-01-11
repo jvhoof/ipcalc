@@ -24,6 +24,7 @@ on:
       - main  # Trigger on push to main branch
     paths-ignore:
       - '.github/workflows/**'
+      - 'skills/**'
   pull_request:
     paths:
       - 'src/templates/gcp/**'
