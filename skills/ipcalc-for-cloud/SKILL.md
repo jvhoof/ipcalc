@@ -1,6 +1,7 @@
 ---
 name: ipcalc-for-cloud
 description: Calculates IP ranges, CIDR blocks, and subnet allocations for cloud networks (Azure, AWS, GCP, Oracle, AliCloud). Supports single VNet/VPC or hub-spoke topologies with automatic AZ distribution. Outputs as info tables, JSON, or IaC templates (Terraform, Bicep, ARM, PowerShell, CloudFormation). Use for network planning, IP calculations, CIDR notation, or infrastructure as code generation.
+allowed-tools: Bash(python *), Bash(terraform *), Bash(az *), Bash(aws *)
 ---
 
 <objective>

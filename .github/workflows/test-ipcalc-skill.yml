@@ -1,0 +1,102 @@
+name: '[Skill] ipcalc-for-cloud Unit Tests'
+
+on:
+  workflow_dispatch:  # Allow manual trigger
+  push:
+    branches:
+      - main
+    paths:
+      - 'skills/ipcalc-for-cloud/scripts/**'
+      - '.github/workflows/test-ipcalc-skill.yml'
+  pull_request:
+    paths:
+      - 'skills/ipcalc-for-cloud/scripts/**'
+      - '.github/workflows/test-ipcalc-skill.yml'
+
+jobs:
+  test-ipcalc-skill:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "skills/ipcalc-for-cloud/scripts/requirements*.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        working-directory: skills/ipcalc-for-cloud/scripts
+        run: |
+          echo "Installing test dependencies with uv..."
+          uv pip install --system pytest pytest-cov pytest-html
+
+      - name: Run unit tests with coverage
+        id: test
+        working-directory: skills/ipcalc-for-cloud/scripts
+        run: |
+          echo "Running unit tests..."
+          uv run pytest test_ipcalc.py \
+            -v \
+            --cov=. \
+            --cov-report=term \
+            --cov-report=html:htmlcov \
+            --cov-report=xml:coverage.xml \
+            --html=test-report.html \
+            --self-contained-html
+
+      - name: Generate Test Summary
+        if: always()
+        working-directory: skills/ipcalc-for-cloud/scripts
+        run: |
+          echo "## 🧪 ipcalc Skill Unit Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Python Version:** 3.11" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Framework:** pytest" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.test.outcome }}" == "success" ]; then
+            echo "### ✅ Test Status: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Test Status: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage.xml ]; then
+            # Extract coverage percentage from coverage.xml
+            COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1 | awk '{printf "%.2f%%", $1 * 100}')
+            echo "Overall Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Coverage report not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            skills/ipcalc-for-cloud/scripts/test-report.html
+            skills/ipcalc-for-cloud/scripts/htmlcov/
+            skills/ipcalc-for-cloud/scripts/coverage.xml
+          retention-days: 30
+
+      - name: Upload coverage to artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: skills/ipcalc-for-cloud/scripts/htmlcov/
+          retention-days: 30
