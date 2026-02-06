@@ -1,0 +1,4 @@
+# Development and testing dependencies for ipcalc-for-cloud skill
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-html>=4.1.0
