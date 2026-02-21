@@ -1,0 +1,646 @@
+name: '[Network] Azure VNET Deployment Test - Python Skill'
+
+on:
+  workflow_dispatch:  # Allow manual trigger with parameters
+    inputs:
+      prefix:
+        description: 'Resource prefix for naming'
+        required: false
+        default: 'ipcalc-py-qa'
+      location:
+        description: 'Azure region'
+        required: false
+        default: 'swedencentral'
+      vnet_cidr:
+        description: 'VNET CIDR block'
+        required: false
+        default: '172.16.1.0/24'
+      subnet_count:
+        description: 'Number of subnets to create'
+        required: false
+        default: '4'
+  push:
+    branches:
+      - main
+    paths:
+      - 'skills/ipcalc-for-cloud/**'
+      - '.github/workflows/network-test-azure-vnet-python-skill.yml'
+  pull_request:
+    paths:
+      - 'skills/ipcalc-for-cloud/**'
+      - '.github/workflows/network-test-azure-vnet-python-skill.yml'
+
+env:
+  # Workflow parameters - workflow_dispatch inputs take precedence over env vars
+  RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX_PY || 'ipcalc-py-test' }}
+  AZURE_LOCATION: ${{ github.event.inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
+  VNET_CIDR: ${{ github.event.inputs.vnet_cidr || vars.AZURE_VNET_CIDR || '172.16.1.0/24' }}
+  SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.AZURE_SUBNET_COUNT || '4' }}
+
+jobs:
+  deploy-with-terraform:
+    name: Deploy and Test with Terraform (Python Skill)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          RESOURCE_GROUP="${JOB_PREFIX}-rg"
+          VNET_NAME="${JOB_PREFIX}-vnet"
+          echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "Generated unique ID: $UNIQUE_ID"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "skills/ipcalc-for-cloud/requirements*.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Install Python Dependencies
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          echo "Installing Python dependencies..."
+          uv pip install --system -r requirements.txt
+
+      - name: Generate Terraform Configuration using Python Skill
+        id: generate-terraform
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          echo "Generating Terraform configuration using Python ipcalc skill..."
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  CIDR: ${{ env.VNET_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Location: ${{ env.AZURE_LOCATION }}"
+          echo "  Prefix: ${{ env.JOB_PREFIX }}"
+
+          # Generate Terraform configuration using Python skill
+          python scripts/ipcalc.py \
+            --provider azure \
+            --cidr "${{ env.VNET_CIDR }}" \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output terraform \
+            --file /tmp/test-terraform.tf
+
+          echo "Terraform configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-terraform.tf
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Setup Azure Credentials for Terraform
+        run: |
+          # Extract Azure credentials from the service principal JSON
+          CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.clientId')
+          CLIENT_SECRET=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.clientSecret')
+          SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.subscriptionId')
+          TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.tenantId')
+
+          echo "ARM_CLIENT_ID=$CLIENT_ID" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=$CLIENT_SECRET" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=$SUBSCRIPTION_ID" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=$TENANT_ID" >> $GITHUB_ENV
+
+      - name: Initialize Terraform
+        working-directory: /tmp
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+      - name: Validate Terraform Configuration
+        working-directory: /tmp
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Plan Terraform Deployment
+        working-directory: /tmp
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan \
+            -var "location=${{ env.AZURE_LOCATION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}" \
+            -out=tfplan
+
+      - name: Apply Terraform Deployment
+        id: deploy
+        working-directory: /tmp
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+          # Extract outputs
+          VNET_NAME=$(terraform output -raw vnet_name 2>/dev/null || echo "")
+          VNET_ID=$(terraform output -raw vnet_id 2>/dev/null || echo "")
+
+          if [ -n "$VNET_NAME" ]; then
+            echo "vnet_name=$VNET_NAME" >> $GITHUB_OUTPUT
+          fi
+          if [ -n "$VNET_ID" ]; then
+            echo "vnet_id=$VNET_ID" >> $GITHUB_OUTPUT
+          fi
+
+          echo "✅ Deployment completed successfully"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          # Check if VNET exists
+          echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ VNET not found!"
+            exit 1
+          fi
+          echo "✅ VNET exists: $VNET_EXISTS"
+
+          # Validate VNET CIDR
+          echo "Validating VNET address space..."
+          VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+          if [ "$VNET_ADDRESS" != "${{ env.VNET_CIDR }}" ]; then
+            echo "❌ VNET CIDR mismatch! Expected: ${{ env.VNET_CIDR }}, Got: $VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ VNET CIDR is correct: $VNET_ADDRESS"
+
+          # List and validate subnets
+          echo "Listing subnets..."
+          SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[].{name:name, prefix:addressPrefix}" -o table)
+
+          echo "$SUBNETS"
+
+          SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          # Validate each subnet provisioning state
+          echo "Validating subnet provisioning states..."
+          az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
+            -o table
+
+          # Check provisioning state
+          FAILED_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_SUBNETS" ]; then
+            echo "❌ Some subnets failed to provision: $FAILED_SUBNETS"
+            exit 1
+          fi
+
+          echo "✅ All subnets provisioned successfully"
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 Azure VNET Deployment Test Report (Python Skill)" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** Terraform (Python Generated)" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
+          echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
+          echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
+          echo "**Subnet Count:** ${{ env.SUBNET_COUNT }}" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
+          else
+            echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
+          fi
+
+          echo "" >> /tmp/test-report.md
+          echo "### Resources Deployed:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        run: |
+          echo "🧹 Cleaning up resources..."
+
+          # Try to destroy using Terraform first
+          echo "Attempting to destroy resources using Terraform..."
+          if terraform destroy -auto-approve \
+            -var "location=${{ env.AZURE_LOCATION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}" 2>/dev/null; then
+            echo "✅ Terraform destroy completed successfully"
+          else
+            echo "⚠️ Terraform destroy failed, falling back to Azure CLI cleanup"
+            echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
+
+            az group delete \
+              --name ${{ env.RESOURCE_GROUP }} \
+              --yes \
+              --no-wait
+
+            echo "✅ Resource group deletion initiated (running in background)"
+          fi
+
+  deploy-with-azure-cli:
+    name: Deploy and Test with Azure CLI (Python Skill)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          RESOURCE_GROUP="${JOB_PREFIX}-rg"
+          VNET_NAME="${JOB_PREFIX}-vnet"
+          echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "Generated unique ID: $UNIQUE_ID"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "skills/ipcalc-for-cloud/requirements*.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          echo "Installing Python dependencies..."
+          uv pip install --system -r requirements.txt
+
+      - name: Generate Azure CLI Script using Python Skill
+        id: generate-script
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          echo "Generating Azure CLI script using Python ipcalc skill..."
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  CIDR: ${{ env.VNET_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Location: ${{ env.AZURE_LOCATION }}"
+          echo "  Prefix: ${{ env.JOB_PREFIX }}"
+
+          # Generate Azure CLI script using Python skill
+          python scripts/ipcalc.py \
+            --provider azure \
+            --cidr "${{ env.VNET_CIDR }}" \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output cli \
+            --file /tmp/deploy-vnet-generated.sh
+
+          echo "Azure CLI script generated successfully"
+          echo "Generated script contents:"
+          cat /tmp/deploy-vnet-generated.sh
+
+          # Customize the script with our specific environment values
+          sed -i "s/PREFIX=\"myproject\"/PREFIX=\"${{ env.JOB_PREFIX }}\"/" /tmp/deploy-vnet-generated.sh
+          sed -i "s/LOCATION=\"eastus\"/LOCATION=\"${{ env.AZURE_LOCATION }}\"/" /tmp/deploy-vnet-generated.sh
+
+          # Make it executable
+          chmod +x /tmp/deploy-vnet-generated.sh
+
+          echo "Final deployment script:"
+          cat /tmp/deploy-vnet-generated.sh
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Execute Azure CLI Deployment
+        id: deploy
+        run: |
+          echo "Executing Azure CLI deployment script..."
+          echo "Using prefix: ${{ env.JOB_PREFIX }}"
+          echo "Resource group will be: ${{ env.RESOURCE_GROUP }}"
+          echo "VNET will be: ${{ env.VNET_NAME }}"
+          /tmp/deploy-vnet-generated.sh
+          echo "✅ Deployment script executed successfully"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          # Check if VNET exists
+          echo "Checking if VNET ${{ env.VNET_NAME }} exists..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ VNET not found!"
+            exit 1
+          fi
+          echo "✅ VNET exists: $VNET_EXISTS"
+
+          # Validate VNET CIDR
+          echo "Validating VNET address space..."
+          VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+          if [ "$VNET_ADDRESS" != "${{ env.VNET_CIDR }}" ]; then
+            echo "❌ VNET CIDR mismatch! Expected: ${{ env.VNET_CIDR }}, Got: $VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ VNET CIDR is correct: $VNET_ADDRESS"
+
+          # List and validate subnets
+          echo "Listing subnets..."
+          SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[].{name:name, prefix:addressPrefix}" -o table)
+
+          echo "$SUBNETS"
+
+          SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          # Validate each subnet provisioning state
+          echo "Validating subnet provisioning states..."
+          az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[].{Name:name, AddressPrefix:addressPrefix, ProvisioningState:provisioningState}" \
+            -o table
+
+          # Check provisioning state
+          FAILED_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_SUBNETS" ]; then
+            echo "❌ Some subnets failed to provision: $FAILED_SUBNETS"
+            exit 1
+          fi
+
+          echo "✅ All subnets provisioned successfully"
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 Azure VNET Deployment Test Report (Python Skill)" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** Azure CLI (Python Generated)" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
+          echo "**VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
+          echo "**VNET CIDR:** ${{ env.VNET_CIDR }}" >> /tmp/test-report.md
+          echo "**Subnet Count:** ${{ env.SUBNET_COUNT }}" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> /tmp/test-report.md
+          else
+            echo "### ❌ Validation Status: FAILED" >> /tmp/test-report.md
+          fi
+
+          echo "" >> /tmp/test-report.md
+          echo "### Resources Deployed:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          echo "🧹 Cleaning up resources..."
+          echo "Deleting resource group: ${{ env.RESOURCE_GROUP }}"
+
+          az group delete \
+            --name ${{ env.RESOURCE_GROUP }} \
+            --yes \
+            --no-wait
+
+          echo "✅ Cleanup initiated (running in background)"
+          echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
+
+  deploy-peering-with-terraform:
+    name: Deploy and Test VNET Peering with Terraform (Python Skill)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          RESOURCE_GROUP="${JOB_PREFIX}-rg"
+          VNET_NAME="${JOB_PREFIX}-vnet"
+          echo "RESOURCE_GROUP=$RESOURCE_GROUP" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "skills/ipcalc-for-cloud/requirements*.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Install Python Dependencies
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          echo "Installing Python dependencies..."
+          uv pip install --system -r requirements.txt
+
+      - name: Generate Terraform Configuration with VNET Peering (Python Skill)
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          echo "Generating Terraform configuration with VNET peering using Python ipcalc skill..."
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  Hub CIDR: 10.0.0.0/16"
+          echo "  Hub Subnets: 2"
+          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
+          echo "  Spoke Subnets: 2,2,2"
+
+          python scripts/ipcalc.py \
+            --provider azure \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --output terraform \
+            --file /tmp/test-terraform-peering.tf
+
+          echo "Terraform configuration generated successfully"
+          echo "Configuration contents:"
+          cat /tmp/test-terraform-peering.tf
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Setup Azure Credentials for Terraform
+        run: |
+          CLIENT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.clientId')
+          CLIENT_SECRET=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.clientSecret')
+          SUBSCRIPTION_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.subscriptionId')
+          TENANT_ID=$(echo '${{ secrets.AZURE_CREDENTIALS }}' | jq -r '.tenantId')
+          echo "ARM_CLIENT_ID=$CLIENT_ID" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=$CLIENT_SECRET" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=$SUBSCRIPTION_ID" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=$TENANT_ID" >> $GITHUB_ENV
+
+      - name: Initialize and Deploy with Terraform
+        working-directory: /tmp
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+          echo "Planning Terraform deployment..."
+          terraform plan \
+            -var "location=${{ env.AZURE_LOCATION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}" \
+            -out=tfplan
+
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+      - name: Validate VNET Peering
+        run: |
+          echo "🔍 Validating VNET peering connections..."
+          for spoke_num in 1 2 3; do
+            PEERING_NAME="hub-to-spoke${spoke_num}"
+            PEERING_STATUS=$(az network vnet peering show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name ${{ env.VNET_NAME }} \
+              --name "$PEERING_NAME" \
+              --query "peeringState" -o tsv 2>/dev/null || echo "")
+
+            if [ "$PEERING_STATUS" != "Connected" ]; then
+              echo "❌ Peering $PEERING_NAME not connected! Status: $PEERING_STATUS"
+              exit 1
+            fi
+            echo "✅ Peering $PEERING_NAME is connected"
+          done
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 Azure VNET Peering Deployment Test Report (Python Skill)" > /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+          echo "**Deployment Method:** Terraform with Hub-Spoke Topology (Python Generated)" >> /tmp/test-report.md
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> /tmp/test-report.md
+          echo "**Resource Group:** ${{ env.RESOURCE_GROUP }}" >> /tmp/test-report.md
+          echo "**Location:** ${{ env.AZURE_LOCATION }}" >> /tmp/test-report.md
+          echo "**Hub VNET Name:** ${{ env.VNET_NAME }}" >> /tmp/test-report.md
+          echo "**Hub CIDR:** 10.0.0.0/16" >> /tmp/test-report.md
+          echo "**Spoke CIDRs:** 10.1.0.0/16, 10.2.0.0/16, 10.3.0.0/16" >> /tmp/test-report.md
+          echo "" >> /tmp/test-report.md
+
+          echo "### Resources Deployed:" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+          az resource list --resource-group ${{ env.RESOURCE_GROUP }} -o table >> /tmp/test-report.md || echo "Failed to list resources" >> /tmp/test-report.md
+          echo '```' >> /tmp/test-report.md
+
+          cat /tmp/test-report.md
+          cat /tmp/test-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        run: |
+          echo "🧹 Cleaning up resources..."
+          terraform destroy -auto-approve \
+            -var "location=${{ env.AZURE_LOCATION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}" || \
+          az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
