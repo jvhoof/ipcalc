@@ -785,7 +785,7 @@ def process_aws_cloudformation_template(template_content: str, data: Dict[str, A
     for idx, subnet in enumerate(data['subnets'], 1):
         subnet_parameters += f'\n  Subnet{idx}Cidr:\n'
         subnet_parameters += f'    Type: String\n'
-        subnet_parameters += f'    Default: {subnet["cidr"]}\n'
+        subnet_parameters += f"    Default: '{subnet["cidr"]}'\n"
         subnet_parameters += f'    Description: CIDR block for Subnet {idx}\n'
 
     # Generate subnet resources with dynamic AZ selection
