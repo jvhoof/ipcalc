@@ -55,6 +55,9 @@ jobs:
         working-directory: skills/ipcalc-for-cloud
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Generate Unique Identifier
         id: unique-id
         run: |
@@ -65,9 +68,6 @@ jobs:
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
           echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
-
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -251,6 +251,9 @@ jobs:
         working-directory: skills/ipcalc-for-cloud
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Generate Unique Identifier
         id: unique-id
         run: |
@@ -258,9 +261,6 @@ jobs:
           echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
-
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -441,6 +441,9 @@ jobs:
         working-directory: skills/ipcalc-for-cloud
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Generate Unique Identifier
         id: unique-id
         run: |
@@ -450,9 +453,6 @@ jobs:
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
           echo "STACK_NAME=$STACK_NAME" >> $GITHUB_ENV
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
-
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
