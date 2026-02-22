@@ -1,0 +1,630 @@
+name: '[Network] AWS VPC Deployment Test (Python Skill)'
+
+on:
+  workflow_dispatch:  # Allow manual trigger with parameters
+    inputs:
+      prefix:
+        description: 'Resource prefix for naming'
+        required: false
+        default: 'ipcalc-qa'
+      region:
+        description: 'AWS region'
+        required: false
+        default: 'eu-north-1'
+      vpc_cidr:
+        description: 'VPC CIDR block'
+        required: false
+        default: '172.16.1.0/24'
+      subnet_count:
+        description: 'Number of subnets to create'
+        required: false
+        default: '4'
+  push:
+    branches:
+      - main
+    paths:
+      - 'skills/ipcalc-for-cloud/scripts/**'
+      - 'skills/ipcalc-for-cloud/templates/aws/**'
+      - '.github/workflows/network-test-aws-vpc-python-skill.yml'
+  pull_request:
+    paths:
+      - 'skills/ipcalc-for-cloud/scripts/**'
+      - 'skills/ipcalc-for-cloud/templates/aws/**'
+      - '.github/workflows/network-test-aws-vpc-python-skill.yml'
+
+env:
+  RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.AWS_RESOURCE_PREFIX || 'ipcalc-test' }}
+  AWS_REGION: ${{ github.event.inputs.region || vars.AWS_REGION || 'eu-north-1' }}
+  VPC_CIDR: ${{ github.event.inputs.vpc_cidr || vars.AWS_VPC_CIDR || '172.16.1.0/24' }}
+  SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.AWS_SUBNET_COUNT || '4' }}
+
+jobs:
+  # ============================================================
+  # Deploy with Terraform
+  # ============================================================
+  deploy-with-terraform:
+    name: Deploy and Test with Terraform
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    defaults:
+      run:
+        working-directory: skills/ipcalc-for-cloud
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Generated unique ID: $UNIQUE_ID"
+          VPC_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-vpc"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate Terraform Configuration using Python ipcalc skill
+        run: |
+          echo "Generating Terraform configuration using Python ipcalc skill..."
+          uv run python scripts/ipcalc.py \
+            --provider aws \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output terraform \
+            --file /tmp/test-terraform.tf
+
+          echo "Terraform configuration generated successfully"
+          cat /tmp/test-terraform.tf
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v5.1.0
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: JVHIPCalcSession
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Initialize and Apply Terraform
+        id: deploy
+        working-directory: /tmp
+        run: |
+          terraform init
+          terraform validate
+          terraform plan \
+            -var "region=${{ env.AWS_REGION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}" \
+            -out=tfplan
+          terraform apply -auto-approve tfplan
+
+          VPC_ID=$(terraform output -raw vpc_id)
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+
+          echo "✅ Deployment completed"
+          echo "VPC ID: $VPC_ID"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          VPC_EXISTS=$(aws ec2 describe-vpcs \
+            --vpc-ids ${{ env.VPC_ID }} \
+            --query "Vpcs[0].VpcId" \
+            --output text 2>/dev/null || echo "")
+
+          if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" == "None" ]; then
+            echo "❌ VPC not found!"
+            exit 1
+          fi
+          echo "✅ VPC exists: $VPC_EXISTS"
+
+          VPC_CIDR_BLOCK=$(aws ec2 describe-vpcs \
+            --vpc-ids ${{ env.VPC_ID }} \
+            --query "Vpcs[0].CidrBlock" \
+            --output text)
+
+          if [ "$VPC_CIDR_BLOCK" != "${{ env.VPC_CIDR }}" ]; then
+            echo "❌ VPC CIDR mismatch! Expected: ${{ env.VPC_CIDR }}, Got: $VPC_CIDR_BLOCK"
+            exit 1
+          fi
+          echo "✅ VPC CIDR is correct: $VPC_CIDR_BLOCK"
+
+          SUBNET_COUNT=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "length(Subnets)" \
+            --output text)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "Subnets[*].{SubnetId:SubnetId, CidrBlock:CidrBlock, AvailabilityZone:AvailabilityZone, State:State}" \
+            --output table
+
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 AWS VPC Deployment Test Report (Python Skill)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Method:** Terraform" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC ID:** ${{ env.VPC_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC CIDR:** ${{ env.VPC_CIDR }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Validation Status: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Subnets Created:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            aws ec2 describe-subnets \
+              --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+              --query "Subnets[*].{SubnetId:SubnetId, CidrBlock:CidrBlock, AvailabilityZone:AvailabilityZone, State:State}" \
+              --output table >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Failed to list subnets" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "VPC ID not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        run: |
+          echo "🧹 Cleaning up resources..."
+          if terraform destroy -auto-approve \
+            -var "region=${{ env.AWS_REGION }}" \
+            -var "prefix=${{ env.JOB_PREFIX }}"; then
+            echo "✅ Terraform destroy completed"
+          else
+            echo "⚠️ Terraform destroy failed, attempting manual cleanup..."
+            if [ -n "${{ env.VPC_ID }}" ]; then
+              SUBNET_IDS=$(aws ec2 describe-subnets \
+                --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+                --query "Subnets[*].SubnetId" \
+                --output text)
+              for subnet_id in $SUBNET_IDS; do
+                aws ec2 delete-subnet --subnet-id "$subnet_id" || true
+              done
+
+              IGW_IDS=$(aws ec2 describe-internet-gateways \
+                --filters "Name=attachment.vpc-id,Values=${{ env.VPC_ID }}" \
+                --query "InternetGateways[*].InternetGatewayId" \
+                --output text)
+              for igw_id in $IGW_IDS; do
+                aws ec2 detach-internet-gateway --internet-gateway-id "$igw_id" --vpc-id "${{ env.VPC_ID }}" || true
+                aws ec2 delete-internet-gateway --internet-gateway-id "$igw_id" || true
+              done
+
+              aws ec2 delete-vpc --vpc-id "${{ env.VPC_ID }}" || true
+              echo "✅ Manual cleanup completed"
+            fi
+          fi
+
+  # ============================================================
+  # Deploy with AWS CLI
+  # ============================================================
+  deploy-with-aws-cli:
+    name: Deploy and Test with AWS CLI
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    defaults:
+      run:
+        working-directory: skills/ipcalc-for-cloud
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate AWS CLI Script using Python ipcalc skill
+        run: |
+          echo "Generating AWS CLI script using Python ipcalc skill..."
+          uv run python scripts/ipcalc.py \
+            --provider aws \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output cli \
+            --file /tmp/deploy-aws.sh
+
+          echo "AWS CLI script generated successfully"
+          cat /tmp/deploy-aws.sh
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v5.1.0
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: JVHIPCalcSession
+
+      - name: Deploy using AWS CLI Script
+        id: deploy
+        run: |
+          # Customize prefix and region in generated script
+          sed -i "s/PREFIX=\"myproject\"/PREFIX=\"${{ env.JOB_PREFIX }}\"/" /tmp/deploy-aws.sh
+          sed -i "s/REGION=\"us-east-1\"/REGION=\"${{ env.AWS_REGION }}\"/" /tmp/deploy-aws.sh
+
+          echo "Running AWS CLI deployment script..."
+          chmod +x /tmp/deploy-aws.sh
+          /tmp/deploy-aws.sh
+
+          # Retrieve VPC ID from the created VPC
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:Name,Values=${{ env.JOB_PREFIX }}-vpc" \
+            --query "Vpcs[0].VpcId" \
+            --output text)
+
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+
+          echo "✅ Deployment completed"
+          echo "VPC ID: $VPC_ID"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          VPC_EXISTS=$(aws ec2 describe-vpcs \
+            --vpc-ids ${{ env.VPC_ID }} \
+            --query "Vpcs[0].VpcId" \
+            --output text 2>/dev/null || echo "")
+
+          if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" == "None" ]; then
+            echo "❌ VPC not found!"
+            exit 1
+          fi
+          echo "✅ VPC exists: $VPC_EXISTS"
+
+          VPC_CIDR_BLOCK=$(aws ec2 describe-vpcs \
+            --vpc-ids ${{ env.VPC_ID }} \
+            --query "Vpcs[0].CidrBlock" \
+            --output text)
+
+          if [ "$VPC_CIDR_BLOCK" != "${{ env.VPC_CIDR }}" ]; then
+            echo "❌ VPC CIDR mismatch! Expected: ${{ env.VPC_CIDR }}, Got: $VPC_CIDR_BLOCK"
+            exit 1
+          fi
+          echo "✅ VPC CIDR is correct: $VPC_CIDR_BLOCK"
+
+          SUBNET_COUNT=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "length(Subnets)" \
+            --output text)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "Subnets[*].{SubnetId:SubnetId, CidrBlock:CidrBlock, AvailabilityZone:AvailabilityZone, State:State}" \
+            --output table
+
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 AWS VPC Deployment Test Report (Python Skill)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Method:** AWS CLI" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC ID:** ${{ env.VPC_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC CIDR:** ${{ env.VPC_CIDR }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Validation Status: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Subnets Created:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            aws ec2 describe-subnets \
+              --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+              --query "Subnets[*].{SubnetId:SubnetId, CidrBlock:CidrBlock, AvailabilityZone:AvailabilityZone, State:State}" \
+              --output table >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Failed to list subnets" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "VPC ID not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          echo "🧹 Cleaning up resources..."
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            # Delete subnets
+            SUBNET_IDS=$(aws ec2 describe-subnets \
+              --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+              --query "Subnets[*].SubnetId" \
+              --output text)
+            for subnet_id in $SUBNET_IDS; do
+              echo "Deleting subnet: $subnet_id"
+              aws ec2 delete-subnet --subnet-id "$subnet_id" || true
+            done
+
+            # Delete internet gateways
+            IGW_IDS=$(aws ec2 describe-internet-gateways \
+              --filters "Name=attachment.vpc-id,Values=${{ env.VPC_ID }}" \
+              --query "InternetGateways[*].InternetGatewayId" \
+              --output text)
+            for igw_id in $IGW_IDS; do
+              aws ec2 detach-internet-gateway --internet-gateway-id "$igw_id" --vpc-id "${{ env.VPC_ID }}" || true
+              aws ec2 delete-internet-gateway --internet-gateway-id "$igw_id" || true
+            done
+
+            # Delete VPC
+            aws ec2 delete-vpc --vpc-id "${{ env.VPC_ID }}" || true
+            echo "✅ Cleanup completed"
+          else
+            echo "⚠️ VPC ID not available, skipping cleanup"
+          fi
+
+  # ============================================================
+  # Deploy with CloudFormation
+  # ============================================================
+  deploy-with-cloudformation:
+    name: Deploy and Test with CloudFormation
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    defaults:
+      run:
+        working-directory: skills/ipcalc-for-cloud
+
+    steps:
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          STACK_NAME="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID-stack"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-$UNIQUE_ID"
+          echo "STACK_NAME=$STACK_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate CloudFormation Template using Python ipcalc skill
+        run: |
+          echo "Generating CloudFormation template using Python ipcalc skill..."
+          uv run python scripts/ipcalc.py \
+            --provider aws \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output cloudformation \
+            --file /tmp/cloudformation.yaml
+
+          echo "CloudFormation template generated successfully"
+          cat /tmp/cloudformation.yaml
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v5.1.0
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: JVHIPCalcSession
+
+      - name: Validate CloudFormation Template
+        run: |
+          echo "Validating CloudFormation template..."
+          aws cloudformation validate-template \
+            --template-body file:///tmp/cloudformation.yaml \
+            --region ${{ env.AWS_REGION }}
+          echo "✅ CloudFormation template is valid"
+
+      - name: Deploy CloudFormation Stack
+        id: deploy
+        run: |
+          echo "Deploying CloudFormation stack: ${{ env.STACK_NAME }}"
+          aws cloudformation create-stack \
+            --stack-name ${{ env.STACK_NAME }} \
+            --template-body file:///tmp/cloudformation.yaml \
+            --parameters ParameterKey=Prefix,ParameterValue=${{ env.JOB_PREFIX }} \
+            --region ${{ env.AWS_REGION }}
+
+          echo "Waiting for stack to complete..."
+          aws cloudformation wait stack-create-complete \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }}
+
+          # Get VPC ID from stack outputs
+          VPC_ID=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue" \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+
+          echo "✅ CloudFormation stack deployed successfully"
+          echo "VPC ID: $VPC_ID"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "🔍 Validating deployment..."
+
+          VPC_EXISTS=$(aws ec2 describe-vpcs \
+            --vpc-ids ${{ env.VPC_ID }} \
+            --query "Vpcs[0].VpcId" \
+            --output text 2>/dev/null || echo "")
+
+          if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" == "None" ]; then
+            echo "❌ VPC not found!"
+            exit 1
+          fi
+          echo "✅ VPC exists: $VPC_EXISTS"
+
+          VPC_CIDR_BLOCK=$(aws ec2 describe-vpcs \
+            --vpc-ids ${{ env.VPC_ID }} \
+            --query "Vpcs[0].CidrBlock" \
+            --output text)
+
+          if [ "$VPC_CIDR_BLOCK" != "${{ env.VPC_CIDR }}" ]; then
+            echo "❌ VPC CIDR mismatch! Expected: ${{ env.VPC_CIDR }}, Got: $VPC_CIDR_BLOCK"
+            exit 1
+          fi
+          echo "✅ VPC CIDR is correct: $VPC_CIDR_BLOCK"
+
+          SUBNET_COUNT=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "length(Subnets)" \
+            --output text)
+
+          echo "✅ Found $SUBNET_COUNT subnet(s)"
+
+          if [ "$SUBNET_COUNT" -lt 1 ]; then
+            echo "❌ No subnets found!"
+            exit 1
+          fi
+
+          aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+            --query "Subnets[*].{SubnetId:SubnetId, CidrBlock:CidrBlock, AvailabilityZone:AvailabilityZone, State:State}" \
+            --output table
+
+          # Verify stack outputs
+          echo "CloudFormation stack outputs:"
+          aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query "Stacks[0].Outputs[*].{Key:OutputKey, Value:OutputValue}" \
+            --output table \
+            --region ${{ env.AWS_REGION }}
+
+          echo "✅ Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## 📊 AWS VPC Deployment Test Report (Python Skill)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Method:** CloudFormation" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Stack Name:** ${{ env.STACK_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC ID:** ${{ env.VPC_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC CIDR:** ${{ env.VPC_CIDR }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### ✅ Validation Status: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Validation Status: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Subnets Created:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            aws ec2 describe-subnets \
+              --filters "Name=vpc-id,Values=${{ env.VPC_ID }}" \
+              --query "Subnets[*].{SubnetId:SubnetId, CidrBlock:CidrBlock, AvailabilityZone:AvailabilityZone, State:State}" \
+              --output table >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Failed to list subnets" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "VPC ID not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          echo "🧹 Cleaning up resources..."
+          if aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+            echo "Deleting CloudFormation stack: ${{ env.STACK_NAME }}"
+            aws cloudformation delete-stack \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }}
+
+            echo "Waiting for stack deletion..."
+            aws cloudformation wait stack-delete-complete \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }} || true
+
+            echo "✅ CloudFormation stack deleted"
+          else
+            echo "Stack ${{ env.STACK_NAME }} not found, skipping deletion"
+          fi

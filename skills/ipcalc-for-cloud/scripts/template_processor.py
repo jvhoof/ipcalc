@@ -709,6 +709,121 @@ def process_azure_powershell_template(template_content: str, data: Dict[str, Any
     return content
 
 
+def process_aws_cli_template(template_content: str, data: Dict[str, Any]) -> str:
+    """
+    Process AWS CLI template.
+
+    Args:
+        template_content: Template file content with placeholders
+        data: Dictionary with vpcCidr/vnetCidr, subnets
+
+    Returns:
+        Processed AWS CLI script
+    """
+    content = template_content
+
+    # AWS uses vpcCidr, but data might have vnetCidr
+    vpc_cidr = data.get('vpcCidr', data.get('vnetCidr', ''))
+
+    # Generate subnet variables
+    subnet_variables = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_variables += f'SUBNET{idx}_CIDR="{subnet["cidr"]}"\n'
+
+    # Generate subnet creation commands
+    subnet_creation = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        az_index = idx - 1
+        subnet_creation += f'# Determine AZ for Subnet {idx}\n'
+        subnet_creation += f'SUBNET{idx}_AZ="${{AVAILABILITY_ZONES[{az_index} % ${{AZ_COUNT}}]}}"\n'
+        subnet_creation += f'echo "Creating Subnet {idx} in ${{SUBNET{idx}_AZ}}..."\n'
+        subnet_creation += f'SUBNET{idx}_ID=$(aws ec2 create-subnet \\\n'
+        subnet_creation += f'  --vpc-id "${{VPC_ID}}" \\\n'
+        subnet_creation += f'  --cidr-block "${{SUBNET{idx}_CIDR}}" \\\n'
+        subnet_creation += f'  --availability-zone "${{SUBNET{idx}_AZ}}" \\\n'
+        subnet_creation += f'  --region "${{REGION}}" \\\n'
+        subnet_creation += f'  --tag-specifications "ResourceType=subnet,Tags=[{{{{Key=Name,Value=${{PREFIX}}-subnet{idx}}}}}]" \\\n'
+        subnet_creation += f'  --query \'Subnet.SubnetId\' \\\n'
+        subnet_creation += f'  --output text)\n\n'
+        subnet_creation += f'echo "Subnet {idx} ID: ${{SUBNET{idx}_ID}}"\n\n'
+
+    # Replace placeholders
+    content = content.replace('{{vpcCidr}}', vpc_cidr)
+    content = content.replace('{{subnetVariables}}', subnet_variables)
+    content = content.replace('{{subnetCreation}}', subnet_creation)
+
+    return content
+
+
+def process_aws_cloudformation_template(template_content: str, data: Dict[str, Any]) -> str:
+    """
+    Process AWS CloudFormation template.
+
+    Args:
+        template_content: Template file content with placeholders
+        data: Dictionary with vpcCidr/vnetCidr, subnets
+
+    Returns:
+        Processed CloudFormation YAML code
+    """
+    content = template_content
+
+    # AWS uses vpcCidr, but data might have vnetCidr
+    vpc_cidr = data.get('vpcCidr', data.get('vnetCidr', ''))
+
+    az_selectors = [
+        '!Select [0, !GetAZs ""]',
+        '!Select [1, !GetAZs ""]',
+        '!Select [2, !GetAZs ""]',
+        '!Select [3, !GetAZs ""]',
+        '!Select [4, !GetAZs ""]',
+        '!Select [5, !GetAZs ""]',
+    ]
+
+    # Generate subnet parameters
+    subnet_parameters = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_parameters += f'\n  Subnet{idx}Cidr:\n'
+        subnet_parameters += f'    Type: String\n'
+        subnet_parameters += f'    Default: {subnet["cidr"]}\n'
+        subnet_parameters += f'    Description: CIDR block for Subnet {idx}\n'
+
+    # Generate subnet resources with dynamic AZ selection
+    subnet_resources = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        az_selector = az_selectors[(idx - 1) % len(az_selectors)]
+        subnet_resources += f'\n  Subnet{idx}:\n'
+        subnet_resources += f'    Type: AWS::EC2::Subnet\n'
+        subnet_resources += f'    Properties:\n'
+        subnet_resources += f'      VpcId: !Ref VPC\n'
+        subnet_resources += f'      CidrBlock: !Ref Subnet{idx}Cidr\n'
+        subnet_resources += f'      AvailabilityZone: {az_selector}\n'
+        subnet_resources += f'      Tags:\n'
+        subnet_resources += f'        - Key: Name\n'
+        subnet_resources += f"          Value: !Sub '${{Prefix}}-subnet{idx}'\n"
+        subnet_resources += f'        - Key: Environment\n'
+        subnet_resources += f'          Value: Production\n'
+        subnet_resources += f'        - Key: ManagedBy\n'
+        subnet_resources += f'          Value: CloudFormation\n'
+
+    # Generate subnet outputs
+    subnet_outputs = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_outputs += f'\n  Subnet{idx}Id:\n'
+        subnet_outputs += f'    Description: ID of Subnet {idx}\n'
+        subnet_outputs += f'    Value: !Ref Subnet{idx}\n'
+        subnet_outputs += f'    Export:\n'
+        subnet_outputs += f"      Name: !Sub '${{AWS::StackName}}-Subnet{idx}Id'\n"
+
+    # Replace placeholders
+    content = content.replace('{{vpcCidr}}', vpc_cidr)
+    content = content.replace('{{subnetParameters}}', subnet_parameters)
+    content = content.replace('{{subnetResources}}', subnet_resources)
+    content = content.replace('{{subnetOutputs}}', subnet_outputs)
+
+    return content
+
+
 def process_template(provider: str, output_format: str, data: Dict[str, Any], templates_dir: str) -> str:
     """
     Process a template for a given provider and output format.
@@ -758,7 +873,12 @@ def process_template(provider: str, output_format: str, data: Dict[str, Any], te
             return process_azure_arm_template(template_content, data)
         elif output_format == 'powershell':
             return process_azure_powershell_template(template_content, data)
-    elif provider == 'aws' and output_format == 'terraform':
-        return process_aws_terraform_template(template_content, data)
+    elif provider == 'aws':
+        if output_format == 'terraform':
+            return process_aws_terraform_template(template_content, data)
+        elif output_format == 'cli':
+            return process_aws_cli_template(template_content, data)
+        elif output_format == 'cloudformation':
+            return process_aws_cloudformation_template(template_content, data)
 
     raise NotImplementedError(f"Template processor not implemented for {provider}/{output_format}")
