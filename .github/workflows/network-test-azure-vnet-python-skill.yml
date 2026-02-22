@@ -30,6 +30,9 @@ on:
       - 'skills/ipcalc-for-cloud/**'
       - '.github/workflows/network-test-azure-vnet-python-skill.yml'
 
+permissions:
+  contents: read
+
 env:
   # Workflow parameters - workflow_dispatch inputs take precedence over env vars
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX_PY || 'ipcalc-py-test' }}
