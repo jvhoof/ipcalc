@@ -742,7 +742,7 @@ def process_aws_cli_template(template_content: str, data: Dict[str, Any]) -> str
         subnet_creation += f'  --cidr-block "${{SUBNET{idx}_CIDR}}" \\\n'
         subnet_creation += f'  --availability-zone "${{SUBNET{idx}_AZ}}" \\\n'
         subnet_creation += f'  --region "${{REGION}}" \\\n'
-        subnet_creation += f'  --tag-specifications "ResourceType=subnet,Tags=[{{{{Key=Name,Value=${{PREFIX}}-subnet{idx}}}}}]" \\\n'
+        subnet_creation += f'  --tag-specifications "ResourceType=subnet,Tags=[{{Key=Name,Value=${{PREFIX}}-subnet{idx}}}]" \\\n'
         subnet_creation += f'  --query \'Subnet.SubnetId\' \\\n'
         subnet_creation += f'  --output text)\n\n'
         subnet_creation += f'echo "Subnet {idx} ID: ${{SUBNET{idx}_ID}}"\n\n'
