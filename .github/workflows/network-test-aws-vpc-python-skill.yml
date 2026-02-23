@@ -504,9 +504,20 @@ jobs:
             --region ${{ env.AWS_REGION }}
 
           echo "Waiting for stack to complete..."
-          aws cloudformation wait stack-create-complete \
+          if aws cloudformation wait stack-create-complete \
             --stack-name ${{ env.STACK_NAME }} \
-            --region ${{ env.AWS_REGION }}
+            --region ${{ env.AWS_REGION }}; then
+            echo "Stack creation succeeded"
+          else
+            echo "❌ Stack creation failed or rolled back"
+            echo "Stack events:"
+            aws cloudformation describe-stack-events \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'StackEvents[*].[Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]' \
+              --output table
+            exit 1
+          fi
 
           # Get VPC ID from stack outputs
           VPC_ID=$(aws cloudformation describe-stacks \
