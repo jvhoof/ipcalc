@@ -775,9 +775,6 @@ def process_aws_cloudformation_template(template_content: str, data: Dict[str, A
         '!Select [0, !GetAZs ""]',
         '!Select [1, !GetAZs ""]',
         '!Select [2, !GetAZs ""]',
-        '!Select [3, !GetAZs ""]',
-        '!Select [4, !GetAZs ""]',
-        '!Select [5, !GetAZs ""]',
     ]
 
     # Generate subnet parameters
