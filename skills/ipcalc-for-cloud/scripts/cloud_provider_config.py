@@ -39,7 +39,14 @@ CLOUD_PROVIDERS: Dict[str, CloudProviderConfig] = {
         'reserved_ip_count': 4,
         'max_cidr_prefix': 8,
         'min_cidr_prefix': 29,
-        'availability_zones': ['a', 'b', 'c', 'd'],
+        'availability_zones': [
+            'us-central1',
+            'us-east1',
+            'us-west1',
+            'europe-west1',
+            'asia-east1',
+            'asia-southeast1'
+        ],
         'supported_outputs': ['info', 'json', 'gcloud', 'terraform']
     },
     'oracle': {

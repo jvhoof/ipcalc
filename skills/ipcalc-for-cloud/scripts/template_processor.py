@@ -821,6 +821,247 @@ def process_aws_cloudformation_template(template_content: str, data: Dict[str, A
     return content
 
 
+def process_gcp_gcloud_template(template_content: str, data: Dict[str, Any]) -> str:
+    """
+    Process GCP gcloud CLI template.
+
+    Args:
+        template_content: Template file content with placeholders
+        data: Dictionary with vpcCidr/vnetCidr, subnets
+
+    Returns:
+        Processed gcloud CLI script
+    """
+    content = template_content
+
+    # Generate subnet creation commands
+    subnet_creation = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        region = subnet.get('region', subnet.get('availabilityZone', 'us-central1'))
+        subnet_creation += f'echo "Creating Subnet {idx} in {region}..."\n'
+        subnet_creation += f'gcloud compute networks subnets create "${{VPC_NAME}}-subnet{idx}" \\\n'
+        subnet_creation += f'  --network="${{VPC_NAME}}" \\\n'
+        subnet_creation += f'  --region="{region}" \\\n'
+        subnet_creation += f'  --range="{subnet["cidr"]}" \\\n'
+        subnet_creation += f'  --enable-private-ip-google-access\n\n'
+
+    # Generate spoke VPC variables and creation commands if peering is enabled
+    spoke_vpc_variables = ''
+    spoke_vpc_creation = ''
+    spoke_peering_creation = ''
+
+    if data.get('peeringEnabled') and data.get('spokeVPCs'):
+        for spoke_idx, spoke in enumerate(data['spokeVPCs'], 1):
+            # Add spoke VPC variables
+            spoke_vpc_variables += f'SPOKE{spoke_idx}_VPC_NAME="${{VPC_NAME}}-spoke{spoke_idx}"\n'
+            spoke_vpc_variables += f'SPOKE{spoke_idx}_CIDR="{spoke["cidr"]}"\n'
+
+            # Add spoke VPC creation
+            spoke_vpc_creation += f'\necho "Creating Spoke VPC {spoke_idx}..."\n'
+            spoke_vpc_creation += f'gcloud compute networks create "${{SPOKE{spoke_idx}_VPC_NAME}}" \\\n'
+            spoke_vpc_creation += f'  --subnet-mode=custom \\\n'
+            spoke_vpc_creation += f'  --bgp-routing-mode=regional\n\n'
+
+            # Add spoke subnets
+            if spoke.get('subnets'):
+                for subnet_idx, subnet in enumerate(spoke['subnets'], 1):
+                    region = subnet.get('region', subnet.get('availabilityZone', 'us-central1'))
+                    spoke_vpc_creation += f'echo "Creating Subnet {subnet_idx} in Spoke VPC {spoke_idx}..."\n'
+                    spoke_vpc_creation += f'gcloud compute networks subnets create "${{SPOKE{spoke_idx}_VPC_NAME}}-subnet{subnet_idx}" \\\n'
+                    spoke_vpc_creation += f'  --network="${{SPOKE{spoke_idx}_VPC_NAME}}" \\\n'
+                    spoke_vpc_creation += f'  --region="{region}" \\\n'
+                    spoke_vpc_creation += f'  --range="{subnet["cidr"]}" \\\n'
+                    spoke_vpc_creation += f'  --enable-private-ip-google-access\n\n'
+
+            # Add peering from hub to spoke
+            spoke_peering_creation += f'\necho "Creating peering from Hub to Spoke {spoke_idx}..."\n'
+            spoke_peering_creation += f'gcloud compute networks peerings create "hub-to-spoke{spoke_idx}" \\\n'
+            spoke_peering_creation += f'  --network="${{VPC_NAME}}" \\\n'
+            spoke_peering_creation += f'  --peer-project="$(gcloud config get-value project)" \\\n'
+            spoke_peering_creation += f'  --peer-network="${{SPOKE{spoke_idx}_VPC_NAME}}" \\\n'
+            spoke_peering_creation += f'  --auto-create-routes\n\n'
+
+            # Add peering from spoke to hub
+            spoke_peering_creation += f'echo "Creating peering from Spoke {spoke_idx} to Hub..."\n'
+            spoke_peering_creation += f'gcloud compute networks peerings create "spoke{spoke_idx}-to-hub" \\\n'
+            spoke_peering_creation += f'  --network="${{SPOKE{spoke_idx}_VPC_NAME}}" \\\n'
+            spoke_peering_creation += f'  --peer-project="$(gcloud config get-value project)" \\\n'
+            spoke_peering_creation += f'  --peer-network="${{VPC_NAME}}" \\\n'
+            spoke_peering_creation += f'  --auto-create-routes\n\n'
+
+    # Replace placeholders
+    content = content.replace('{{spokeVPCVariables}}', spoke_vpc_variables)
+    content = content.replace('{{subnetCreation}}', subnet_creation)
+    content = content.replace('{{spokeVPCCreation}}', spoke_vpc_creation)
+    content = content.replace('{{spokePeeringCreation}}', spoke_peering_creation)
+
+    return content
+
+
+def process_gcp_terraform_template(template_content: str, data: Dict[str, Any]) -> str:
+    """
+    Process GCP Terraform template.
+
+    Args:
+        template_content: Template file content with placeholders
+        data: Dictionary with vpcCidr/vnetCidr, subnets
+
+    Returns:
+        Processed Terraform code
+    """
+    content = template_content
+
+    # AWS uses vpcCidr, but data might have vnetCidr
+    vpc_cidr = data.get('vpcCidr', data.get('vnetCidr', ''))
+
+    # Generate subnet variables
+    subnet_variables = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        region = subnet.get('region', subnet.get('availabilityZone', 'us-central1'))
+        subnet_variables += f'\nvariable "subnet{idx}_cidr" {{\n'
+        subnet_variables += f'  description = "CIDR block for Subnet {idx}"\n'
+        subnet_variables += f'  type        = string\n'
+        subnet_variables += f'  default     = "{subnet["cidr"]}"\n'
+        subnet_variables += f'}}\n'
+
+        subnet_variables += f'\nvariable "subnet{idx}_region" {{\n'
+        subnet_variables += f'  description = "Region for Subnet {idx}"\n'
+        subnet_variables += f'  type        = string\n'
+        subnet_variables += f'  default     = "{region}"\n'
+        subnet_variables += f'}}\n'
+
+    # Generate subnet resources
+    subnet_resources = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_resources += f'\nresource "google_compute_subnetwork" "subnet{idx}" {{\n'
+        subnet_resources += f'  name          = "${{var.vpc_name}}-subnet{idx}"\n'
+        subnet_resources += f'  ip_cidr_range = var.subnet{idx}_cidr\n'
+        subnet_resources += f'  region        = var.subnet{idx}_region\n'
+        subnet_resources += f'  network       = google_compute_network.vpc.id\n'
+        subnet_resources += f'  project       = var.project_id\n\n'
+        subnet_resources += f'  private_ip_google_access = true\n\n'
+        subnet_resources += f'  log_config {{\n'
+        subnet_resources += f'    aggregation_interval = "INTERVAL_10_MIN"\n'
+        subnet_resources += f'    flow_sampling        = 0.5\n'
+        subnet_resources += f'    metadata             = "INCLUDE_ALL_METADATA"\n'
+        subnet_resources += f'  }}\n'
+        subnet_resources += f'}}\n'
+
+    # Generate subnet outputs
+    subnet_outputs = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_outputs += f'\noutput "subnet{idx}_name" {{\n'
+        subnet_outputs += f'  description = "Name of Subnet {idx}"\n'
+        subnet_outputs += f'  value       = google_compute_subnetwork.subnet{idx}.name\n'
+        subnet_outputs += f'}}\n'
+
+        subnet_outputs += f'\noutput "subnet{idx}_id" {{\n'
+        subnet_outputs += f'  description = "ID of Subnet {idx}"\n'
+        subnet_outputs += f'  value       = google_compute_subnetwork.subnet{idx}.id\n'
+        subnet_outputs += f'}}\n'
+
+        subnet_outputs += f'\noutput "subnet{idx}_self_link" {{\n'
+        subnet_outputs += f'  description = "Self link of Subnet {idx}"\n'
+        subnet_outputs += f'  value       = google_compute_subnetwork.subnet{idx}.self_link\n'
+        subnet_outputs += f'}}\n'
+
+    # Generate spoke VPC variables, resources, and peering if peering is enabled
+    spoke_vpc_variables = ''
+    spoke_vpc_resources = ''
+    spoke_peering_resources = ''
+    spoke_outputs = ''
+
+    if data.get('peeringEnabled') and data.get('spokeVPCs'):
+        for spoke_idx, spoke in enumerate(data['spokeVPCs'], 1):
+            # Add spoke VPC variables
+            spoke_vpc_variables += f'\nvariable "spoke{spoke_idx}_cidr" {{\n'
+            spoke_vpc_variables += f'  description = "CIDR block for Spoke VPC {spoke_idx}"\n'
+            spoke_vpc_variables += f'  type        = string\n'
+            spoke_vpc_variables += f'  default     = "{spoke["cidr"]}"\n'
+            spoke_vpc_variables += f'}}\n'
+
+            # Add spoke subnet variables
+            if spoke.get('subnets'):
+                for subnet_idx, subnet in enumerate(spoke['subnets'], 1):
+                    region = subnet.get('region', subnet.get('availabilityZone', 'us-central1'))
+                    spoke_vpc_variables += f'\nvariable "spoke{spoke_idx}_subnet{subnet_idx}_cidr" {{\n'
+                    spoke_vpc_variables += f'  description = "CIDR block for Spoke {spoke_idx} Subnet {subnet_idx}"\n'
+                    spoke_vpc_variables += f'  type        = string\n'
+                    spoke_vpc_variables += f'  default     = "{subnet["cidr"]}"\n'
+                    spoke_vpc_variables += f'}}\n'
+
+                    spoke_vpc_variables += f'\nvariable "spoke{spoke_idx}_subnet{subnet_idx}_region" {{\n'
+                    spoke_vpc_variables += f'  description = "Region for Spoke {spoke_idx} Subnet {subnet_idx}"\n'
+                    spoke_vpc_variables += f'  type        = string\n'
+                    spoke_vpc_variables += f'  default     = "{region}"\n'
+                    spoke_vpc_variables += f'}}\n'
+
+            # Add spoke VPC resource
+            spoke_vpc_resources += f'\nresource "google_compute_network" "spoke{spoke_idx}_vpc" {{\n'
+            spoke_vpc_resources += f'  name                    = "${{var.vpc_name}}-spoke{spoke_idx}"\n'
+            spoke_vpc_resources += f'  auto_create_subnetworks = false\n'
+            spoke_vpc_resources += f'  routing_mode            = "REGIONAL"\n'
+            spoke_vpc_resources += f'  project                 = var.project_id\n\n'
+            spoke_vpc_resources += f'  description = "Spoke VPC {spoke_idx}"\n'
+            spoke_vpc_resources += f'}}\n'
+
+            # Add spoke subnets
+            if spoke.get('subnets'):
+                for subnet_idx, subnet in enumerate(spoke['subnets'], 1):
+                    spoke_vpc_resources += f'\nresource "google_compute_subnetwork" "spoke{spoke_idx}_subnet{subnet_idx}" {{\n'
+                    spoke_vpc_resources += f'  name          = "${{var.vpc_name}}-spoke{spoke_idx}-subnet{subnet_idx}"\n'
+                    spoke_vpc_resources += f'  ip_cidr_range = var.spoke{spoke_idx}_subnet{subnet_idx}_cidr\n'
+                    spoke_vpc_resources += f'  region        = var.spoke{spoke_idx}_subnet{subnet_idx}_region\n'
+                    spoke_vpc_resources += f'  network       = google_compute_network.spoke{spoke_idx}_vpc.id\n'
+                    spoke_vpc_resources += f'  project       = var.project_id\n\n'
+                    spoke_vpc_resources += f'  private_ip_google_access = true\n\n'
+                    spoke_vpc_resources += f'  log_config {{\n'
+                    spoke_vpc_resources += f'    aggregation_interval = "INTERVAL_10_MIN"\n'
+                    spoke_vpc_resources += f'    flow_sampling        = 0.5\n'
+                    spoke_vpc_resources += f'    metadata             = "INCLUDE_ALL_METADATA"\n'
+                    spoke_vpc_resources += f'  }}\n'
+                    spoke_vpc_resources += f'}}\n'
+
+            # Add peering from hub to spoke
+            spoke_peering_resources += f'\nresource "google_compute_network_peering" "hub_to_spoke{spoke_idx}" {{\n'
+            spoke_peering_resources += f'  name         = "hub-to-spoke{spoke_idx}"\n'
+            spoke_peering_resources += f'  network      = google_compute_network.vpc.self_link\n'
+            spoke_peering_resources += f'  peer_network = google_compute_network.spoke{spoke_idx}_vpc.self_link\n\n'
+            spoke_peering_resources += f'  auto_create_routes = true\n'
+            spoke_peering_resources += f'}}\n'
+
+            # Add peering from spoke to hub
+            spoke_peering_resources += f'\nresource "google_compute_network_peering" "spoke{spoke_idx}_to_hub" {{\n'
+            spoke_peering_resources += f'  name         = "spoke{spoke_idx}-to-hub"\n'
+            spoke_peering_resources += f'  network      = google_compute_network.spoke{spoke_idx}_vpc.self_link\n'
+            spoke_peering_resources += f'  peer_network = google_compute_network.vpc.self_link\n\n'
+            spoke_peering_resources += f'  auto_create_routes = true\n'
+            spoke_peering_resources += f'}}\n'
+
+            # Add spoke outputs
+            spoke_outputs += f'\noutput "spoke{spoke_idx}_vpc_name" {{\n'
+            spoke_outputs += f'  description = "Name of Spoke {spoke_idx} VPC"\n'
+            spoke_outputs += f'  value       = google_compute_network.spoke{spoke_idx}_vpc.name\n'
+            spoke_outputs += f'}}\n'
+
+            spoke_outputs += f'\noutput "spoke{spoke_idx}_vpc_id" {{\n'
+            spoke_outputs += f'  description = "ID of Spoke {spoke_idx} VPC"\n'
+            spoke_outputs += f'  value       = google_compute_network.spoke{spoke_idx}_vpc.id\n'
+            spoke_outputs += f'}}\n'
+
+    # Replace placeholders
+    content = content.replace('{{vpcCidr}}', vpc_cidr)
+    content = content.replace('{{subnetVariables}}', subnet_variables)
+    content = content.replace('{{subnetResources}}', subnet_resources)
+    content = content.replace('{{subnetOutputs}}', subnet_outputs)
+    content = content.replace('{{spokeVPCVariables}}', spoke_vpc_variables)
+    content = content.replace('{{spokeVPCResources}}', spoke_vpc_resources)
+    content = content.replace('{{spokePeeringResources}}', spoke_peering_resources)
+    content = content.replace('{{spokeOutputs}}', spoke_outputs)
+
+    return content
+
+
 def process_template(provider: str, output_format: str, data: Dict[str, Any], templates_dir: str) -> str:
     """
     Process a template for a given provider and output format.
@@ -877,5 +1118,10 @@ def process_template(provider: str, output_format: str, data: Dict[str, Any], te
             return process_aws_cli_template(template_content, data)
         elif output_format == 'cloudformation':
             return process_aws_cloudformation_template(template_content, data)
+    elif provider == 'gcp':
+        if output_format == 'terraform':
+            return process_gcp_terraform_template(template_content, data)
+        elif output_format == 'gcloud':
+            return process_gcp_gcloud_template(template_content, data)
 
     raise NotImplementedError(f"Template processor not implemented for {provider}/{output_format}")
