@@ -925,7 +925,6 @@ export function processGCPGcloudTemplate(templateContent: string, data: Template
       spokePeeringCreation += `\necho "Creating peering from Hub to Spoke ${spokeNum}..."\n`
       spokePeeringCreation += `gcloud compute networks peerings create "hub-to-spoke${spokeNum}" \\\n`
       spokePeeringCreation += `  --network="\${VPC_NAME}" \\\n`
-      spokePeeringCreation += `  --peer-project="\${PROJECT_ID}" \\\n`
       spokePeeringCreation += `  --peer-network="\${SPOKE${spokeNum}_VPC_NAME}" \\\n`
       spokePeeringCreation += `  --auto-create-routes\n\n`
 
@@ -933,7 +932,6 @@ export function processGCPGcloudTemplate(templateContent: string, data: Template
       spokePeeringCreation += `echo "Creating peering from Spoke ${spokeNum} to Hub..."\n`
       spokePeeringCreation += `gcloud compute networks peerings create "spoke${spokeNum}-to-hub" \\\n`
       spokePeeringCreation += `  --network="\${SPOKE${spokeNum}_VPC_NAME}" \\\n`
-      spokePeeringCreation += `  --peer-project="\${PROJECT_ID}" \\\n`
       spokePeeringCreation += `  --peer-network="\${VPC_NAME}" \\\n`
       spokePeeringCreation += `  --auto-create-routes\n\n`
     })
