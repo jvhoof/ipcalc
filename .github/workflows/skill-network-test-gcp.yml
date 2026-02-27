@@ -1,4 +1,4 @@
-name: "[Network] GCP VPC Deployment Test (Python Skill)"
+name: "[Skill] Google Cloud VPC Deployment Test"
 
 on:
   workflow_dispatch:  # Allow manual trigger with parameters
@@ -43,7 +43,7 @@ jobs:
   # Deploy with Terraform
   # ============================================================
   deploy-with-terraform:
-    name: Deploy and Test with Terraform
+    name: Terraform deployment and validation
     runs-on: ubuntu-latest
 
     permissions:
@@ -217,7 +217,7 @@ jobs:
   # Deploy with gcloud CLI
   # ============================================================
   deploy-with-gcloud:
-    name: Deploy and Test with gcloud CLI
+    name: gcloud CLI deployment and validation
     runs-on: ubuntu-latest
 
     permissions:

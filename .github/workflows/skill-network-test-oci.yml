@@ -1,4 +1,4 @@
-name: '[Network] Oracle Cloud VCN Deployment Test (Python Skill)'
+name: '[Skill] Oracle Cloud VCN Deployment Test'
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
   # Deploy with Terraform
   # ============================================================
   deploy-with-terraform:
-    name: Deploy and Test with Terraform
+    name: Terraform deployment and validation
     runs-on: ubuntu-latest
 
     permissions:
@@ -283,7 +283,7 @@ jobs:
   # Deploy with OCI CLI
   # ============================================================
   deploy-with-oci-cli:
-    name: Deploy and Test with OCI CLI
+    name: OCI CLI deployment and validation
     runs-on: ubuntu-latest
 
     permissions:

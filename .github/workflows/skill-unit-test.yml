@@ -1,4 +1,4 @@
-name: '[Skill] ipcalc-for-cloud Unit Tests'
+name: '[Skill] Unit tests'
 
 on:
   workflow_dispatch:  # Allow manual trigger
@@ -14,8 +14,8 @@ on:
       - '.github/workflows/test-ipcalc-skill.yml'
 
 jobs:
-  test-ipcalc-skill:
-    name: Run Unit Tests
+  skill-unit-test:
+    name: Skill Unit Tests
     runs-on: ubuntu-latest
 
     steps:
