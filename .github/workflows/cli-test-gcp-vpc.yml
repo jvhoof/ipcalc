@@ -39,7 +39,7 @@ env:
 
 jobs:
   deploy-with-terraform:
-    name: Deploy and Test with Terraform
+    name: Terraform deployment and validation
     runs-on: ubuntu-latest
 
     # Add these permissions for Workload Identity Federation
@@ -300,7 +300,7 @@ jobs:
   # ========================================
 
   deploy-peering-with-gcloud:
-    name: Deploy and Test VPC Peering with gcloud CLI
+    name: gloud CLI VPC peering deployment and validation
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -501,7 +501,7 @@ jobs:
           echo "✅ Cleanup completed"
 
   deploy-peering-with-terraform:
-    name: Deploy and Test VPC Peering with Terraform
+    name: Terraform VPC peering deployment and validation
     runs-on: ubuntu-latest
     permissions:
       id-token: write
