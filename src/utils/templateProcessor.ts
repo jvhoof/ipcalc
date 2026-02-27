@@ -921,18 +921,12 @@ export function processGCPGcloudTemplate(templateContent: string, data: Template
         })
       }
 
-      // Add peering from hub to spoke
+      // Add peering from hub to spoke only
+      // GCP automatically creates the reverse peering in same-project scenarios
       spokePeeringCreation += `\necho "Creating peering from Hub to Spoke ${spokeNum}..."\n`
       spokePeeringCreation += `gcloud compute networks peerings create "hub-to-spoke${spokeNum}" \\\n`
       spokePeeringCreation += `  --network="\${VPC_NAME}" \\\n`
       spokePeeringCreation += `  --peer-network="\${SPOKE${spokeNum}_VPC_NAME}" \\\n`
-      spokePeeringCreation += `  --auto-create-routes\n\n`
-
-      // Add peering from spoke to hub
-      spokePeeringCreation += `echo "Creating peering from Spoke ${spokeNum} to Hub..."\n`
-      spokePeeringCreation += `gcloud compute networks peerings create "spoke${spokeNum}-to-hub" \\\n`
-      spokePeeringCreation += `  --network="\${SPOKE${spokeNum}_VPC_NAME}" \\\n`
-      spokePeeringCreation += `  --peer-network="\${VPC_NAME}" \\\n`
       spokePeeringCreation += `  --auto-create-routes\n\n`
     })
   }
@@ -1065,18 +1059,12 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
         })
       }
 
-      // Add peering from hub to spoke
+      // Add peering from hub to spoke only
+      // GCP automatically creates the reverse peering in same-project scenarios
       spokePeeringResources += `\nresource "google_compute_network_peering" "hub_to_spoke${spokeNum}" {\n`
       spokePeeringResources += `  name         = "hub-to-spoke${spokeNum}"\n`
       spokePeeringResources += `  network      = google_compute_network.vpc.self_link\n`
       spokePeeringResources += `  peer_network = google_compute_network.spoke${spokeNum}_vpc.self_link\n`
-      spokePeeringResources += `}\n`
-
-      // Add peering from spoke to hub
-      spokePeeringResources += `\nresource "google_compute_network_peering" "spoke${spokeNum}_to_hub" {\n`
-      spokePeeringResources += `  name         = "spoke${spokeNum}-to-hub"\n`
-      spokePeeringResources += `  network      = google_compute_network.spoke${spokeNum}_vpc.self_link\n`
-      spokePeeringResources += `  peer_network = google_compute_network.vpc.self_link\n`
       spokePeeringResources += `}\n`
 
       // Add spoke VPC outputs

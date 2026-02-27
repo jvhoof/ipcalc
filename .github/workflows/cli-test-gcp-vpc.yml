@@ -379,6 +379,9 @@ jobs:
         run: |
           echo "🔍 Validating VPC peering connections..."
 
+          # Wait a bit for peerings to stabilize
+          sleep 10
+
           # First, list all peerings for debugging
           echo "All peerings on hub VPC:"
           gcloud compute networks peerings list \
@@ -387,41 +390,16 @@ jobs:
           for spoke_num in 1 2 3; do
             PEERING_NAME="hub-to-spoke${spoke_num}"
 
-            # Get all peerings and grep for the specific one
-            PEERING_INFO=$(gcloud compute networks peerings list \
+            # Get peering status
+            PEERING_STATUS=$(gcloud compute networks peerings list \
               --network="${{ env.VPC_NAME }}" \
-              --flatten="peerings[]" \
-              --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
+              --filter="name=${PEERING_NAME}" \
+              --format="value(state)" 2>/dev/null || echo "")
 
-            if [ -z "$PEERING_INFO" ]; then
+            if [ -z "$PEERING_STATUS" ]; then
               echo "❌ Peering $PEERING_NAME not found!"
               exit 1
             fi
-
-            PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f3)
-
-            if [ "$PEERING_STATUS" != "ACTIVE" ]; then
-              echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
-              exit 1
-            fi
-            echo "✅ Peering $PEERING_NAME is active"
-          done
-
-          for spoke_num in 1 2 3; do
-            PEERING_NAME="spoke${spoke_num}-to-hub"
-
-            # Get all peerings and grep for the specific one
-            PEERING_INFO=$(gcloud compute networks peerings list \
-              --network="${{ env.VPC_NAME }}-spoke${spoke_num}" \
-              --flatten="peerings[]" \
-              --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
-
-            if [ -z "$PEERING_INFO" ]; then
-              echo "❌ Peering $PEERING_NAME not found!"
-              exit 1
-            fi
-
-            PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f3)
 
             if [ "$PEERING_STATUS" != "ACTIVE" ]; then
               echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
@@ -608,50 +586,27 @@ jobs:
         run: |
           echo "🔍 Validating VPC peering connections..."
 
+          # Wait a bit for peerings to stabilize
+          sleep 10
+
           # First, list all peerings for debugging
           echo "All peerings on hub VPC:"
-          gcloud compute networks peerings list
+          gcloud compute networks peerings list \
+            --network="${{ env.VPC_NAME }}"
 
           for spoke_num in 1 2 3; do
             PEERING_NAME="hub-to-spoke${spoke_num}"
 
-            # Get all peerings and grep for the specific one
-            PEERING_INFO=$(gcloud compute networks peerings list \
+            # Get peering status
+            PEERING_STATUS=$(gcloud compute networks peerings list \
               --network="${{ env.VPC_NAME }}" \
-              --flatten="peerings[]" \
-              --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
+              --filter="name=${PEERING_NAME}" \
+              --format="value(state)" 2>/dev/null || echo "")
 
-            echo "Peering info: $PEERING_INFO"
-
-            if [ -z "$PEERING_INFO" ]; then
+            if [ -z "$PEERING_STATUS" ]; then
               echo "❌ Peering $PEERING_NAME not found!"
               exit 1
             fi
-
-            PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f3)
-
-            if [ "$PEERING_STATUS" != "ACTIVE" ]; then
-              echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
-              exit 1
-            fi
-            echo "✅ Peering $PEERING_NAME is active"
-          done
-
-          for spoke_num in 1 2 3; do
-            PEERING_NAME="spoke${spoke_num}-to-hub"
-
-            # Get all peerings and grep for the specific one
-            PEERING_INFO=$(gcloud compute networks peerings list \
-              --network="${{ env.VPC_NAME }}-spoke${spoke_num}" \
-              --flatten="peerings[]" \
-              --format="csv(peerings.name,name,peerings.state)" 2>/dev/null | grep "^${PEERING_NAME}," || echo "")
-
-            if [ -z "$PEERING_INFO" ]; then
-              echo "❌ Peering $PEERING_NAME not found!"
-              exit 1
-            fi
-
-            PEERING_STATUS=$(echo "$PEERING_INFO" | cut -d',' -f3)
 
             if [ "$PEERING_STATUS" != "ACTIVE" ]; then
               echo "❌ Peering $PEERING_NAME not active! Status: $PEERING_STATUS"
