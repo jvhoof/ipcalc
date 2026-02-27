@@ -898,6 +898,45 @@ def process_gcp_gcloud_template(template_content: str, data: Dict[str, Any]) -> 
     return content
 
 
+def process_oracle_oci_template(template_content: str, data: Dict[str, Any]) -> str:
+    """
+    Process Oracle OCI CLI template.
+
+    Args:
+        template_content: Template file content with placeholders
+        data: Dictionary with vnetCidr/vcnCidr, subnets
+
+    Returns:
+        Processed OCI CLI bash script
+    """
+    content = template_content
+
+    # Oracle uses vcnCidr; data may carry vnetCidr
+    vcn_cidr = data.get('vcnCidr', data.get('vnetCidr', ''))
+
+    # Generate subnet creation commands
+    subnet_creation = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_creation += f'echo "Creating Subnet {idx}..."\n'
+        subnet_creation += f'SUBNET{idx}_ID=$(oci network subnet create \\\n'
+        subnet_creation += f'  --compartment-id "${{COMPARTMENT_ID}}" \\\n'
+        subnet_creation += f'  --vcn-id "${{VCN_ID}}" \\\n'
+        subnet_creation += f'  --cidr-block "{subnet["cidr"]}" \\\n'
+        subnet_creation += f'  --display-name "${{VCN_NAME}}-subnet{idx}" \\\n'
+        subnet_creation += f'  --dns-label "subnet{idx}" \\\n'
+        subnet_creation += f'  --route-table-id "${{RT_ID}}" \\\n'
+        subnet_creation += f'  --security-list-ids \'["${{SL_ID}}"]\' \\\n'
+        subnet_creation += f'  --query \'data.id\' \\\n'
+        subnet_creation += f'  --raw-output)\n\n'
+        subnet_creation += f'echo "Subnet {idx} created with ID: ${{SUBNET{idx}_ID}}"\n\n'
+
+    # Replace placeholders — vcnCidr appears twice in the template (VCN and security list)
+    content = content.replace('{{vcnCidr}}', vcn_cidr)
+    content = content.replace('{{subnetCreation}}', subnet_creation)
+
+    return content
+
+
 def process_gcp_terraform_template(template_content: str, data: Dict[str, Any]) -> str:
     """
     Process GCP Terraform template.
@@ -911,7 +950,7 @@ def process_gcp_terraform_template(template_content: str, data: Dict[str, Any]) 
     """
     content = template_content
 
-    # AWS uses vpcCidr, but data might have vnetCidr
+    # GCP uses vpcCidr, but data might have vnetCidr
     vpc_cidr = data.get('vpcCidr', data.get('vnetCidr', ''))
 
     # Generate subnet variables
@@ -1062,6 +1101,71 @@ def process_gcp_terraform_template(template_content: str, data: Dict[str, Any]) 
     return content
 
 
+def process_oracle_terraform_template(template_content: str, data: Dict[str, Any]) -> str:
+    """
+    Process Oracle Terraform template.
+
+    Args:
+        template_content: Template file content with placeholders
+        data: Dictionary with vnetCidr/vcnCidr, subnets
+
+    Returns:
+        Processed Terraform HCL code
+    """
+    content = template_content
+
+    # Oracle uses vcnCidr; data may carry vnetCidr
+    vcn_cidr = data.get('vcnCidr', data.get('vnetCidr', ''))
+
+    # Generate subnet variables
+    subnet_variables = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_variables += f'\nvariable "subnet{idx}_cidr" {{\n'
+        subnet_variables += f'  description = "CIDR block for Subnet {idx}"\n'
+        subnet_variables += f'  type        = string\n'
+        subnet_variables += f'  default     = "{subnet["cidr"]}"\n'
+        subnet_variables += '}\n'
+
+    # Generate subnet resources
+    subnet_resources = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_resources += f'resource "oci_core_subnet" "subnet{idx}" {{\n'
+        subnet_resources += f'  compartment_id             = var.compartment_id\n'
+        subnet_resources += f'  vcn_id                     = oci_core_vcn.vcn.id\n'
+        subnet_resources += f'  cidr_block                 = var.subnet{idx}_cidr\n'
+        subnet_resources += f'  display_name               = "${{var.vcn_name}}-subnet{idx}"\n'
+        subnet_resources += f'  dns_label                  = "subnet{idx}"\n'
+        subnet_resources += f'  route_table_id             = oci_core_route_table.rt.id\n'
+        subnet_resources += f'  security_list_ids          = [oci_core_security_list.sl.id]\n'
+        subnet_resources += f'  prohibit_public_ip_on_vnic = false\n\n'
+        subnet_resources += f'  freeform_tags = {{\n'
+        subnet_resources += f'    "Environment" = "Production"\n'
+        subnet_resources += f'    "ManagedBy"   = "Terraform"\n'
+        subnet_resources += f'  }}\n'
+        subnet_resources += '}\n\n'
+
+    # Generate subnet outputs
+    subnet_outputs = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        subnet_outputs += f'\noutput "subnet{idx}_id" {{\n'
+        subnet_outputs += f'  description = "OCID of Subnet {idx}"\n'
+        subnet_outputs += f'  value       = oci_core_subnet.subnet{idx}.id\n'
+        subnet_outputs += '}\n'
+
+        subnet_outputs += f'\noutput "subnet{idx}_name" {{\n'
+        subnet_outputs += f'  description = "Name of Subnet {idx}"\n'
+        subnet_outputs += f'  value       = oci_core_subnet.subnet{idx}.display_name\n'
+        subnet_outputs += '}\n'
+
+    # Replace placeholders
+    content = content.replace('{{vcnCidr}}', vcn_cidr)
+    content = content.replace('{{subnetVariables}}', subnet_variables)
+    content = content.replace('{{subnetResources}}', subnet_resources)
+    content = content.replace('{{subnetOutputs}}', subnet_outputs)
+
+    return content
+
+
 def process_template(provider: str, output_format: str, data: Dict[str, Any], templates_dir: str) -> str:
     """
     Process a template for a given provider and output format.
@@ -1123,5 +1227,10 @@ def process_template(provider: str, output_format: str, data: Dict[str, Any], te
             return process_gcp_terraform_template(template_content, data)
         elif output_format == 'gcloud':
             return process_gcp_gcloud_template(template_content, data)
+    elif provider == 'oracle':
+        if output_format == 'oci':
+            return process_oracle_oci_template(template_content, data)
+        elif output_format == 'terraform':
+            return process_oracle_terraform_template(template_content, data)
 
     raise NotImplementedError(f"Template processor not implemented for {provider}/{output_format}")
