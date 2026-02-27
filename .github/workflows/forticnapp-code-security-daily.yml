@@ -1,4 +1,4 @@
-name: Daily SCA Scan on Main Branch 
+name: "[FortiCNAPP] Daily SCA Scan on Main Branch"
 
 # Schedule the workflow to run every 24 hours 
 on: 

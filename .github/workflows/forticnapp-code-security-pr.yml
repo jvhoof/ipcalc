@@ -1,8 +1,9 @@
+name: "[FortiCNAPP] Code Security (PR)"
+
 on:
   pull_request:
     paths-ignore:
       - '.github/workflows/*.yml'
-      - 'skills/**'
 
 permissions:
   contents: read
@@ -13,7 +14,6 @@ env:
   LW_API_KEY: ${{ secrets.LW_API_KEY }}
   LW_API_SECRET: ${{ secrets.LW_API_SECRET }}
 
-name: FortiCNAPP Code Security (PR)
 jobs:
   run-analysis:
     runs-on: ubuntu-latest

@@ -1,4 +1,4 @@
-name: '[Network] Oracle Cloud VCN Deployment Test'
+name: '[CLI] Oracle Cloud VCN Deployment Test'
 
 on:
   workflow_dispatch:  # Allow manual trigger with parameters

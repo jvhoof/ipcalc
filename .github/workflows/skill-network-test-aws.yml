@@ -1,4 +1,4 @@
-name: '[Network] AWS VPC Deployment Test (Python Skill)'
+name: '[Skill] AWS VPC Deployment Test'
 
 on:
   workflow_dispatch:  # Allow manual trigger with parameters
@@ -43,7 +43,7 @@ jobs:
   # Deploy with Terraform
   # ============================================================
   deploy-with-terraform:
-    name: Deploy and Test with Terraform
+    name: Terraform deployment and validation
     runs-on: ubuntu-latest
 
     permissions:
@@ -239,7 +239,7 @@ jobs:
   # Deploy with AWS CLI
   # ============================================================
   deploy-with-aws-cli:
-    name: Deploy and Test with AWS CLI
+    name: AWS CLI deployment and validation
     runs-on: ubuntu-latest
 
     permissions:
@@ -429,7 +429,7 @@ jobs:
   # Deploy with CloudFormation
   # ============================================================
   deploy-with-cloudformation:
-    name: Deploy and Test with CloudFormation
+    name: AWS CloudFormation deployment and validation
     runs-on: ubuntu-latest
 
     permissions:

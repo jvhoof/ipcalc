@@ -1,10 +1,11 @@
+name: "[FortiCNAPP] Code Security (Push)"
+
 on:
   push:
     # Run the scan on evey push in main
     branches: [main]
     paths-ignore:
       - '.github/workflows/*.yml'
-      - 'skills/**'
 
   # Run the scan evey day at 7:00am
   schedule:
@@ -17,7 +18,6 @@ env:
   LW_API_KEY: ${{ secrets.LW_API_KEY }}
   LW_API_SECRET: ${{ secrets.LW_API_SECRET }}
 
-name: FortiCNAPP Code Security (Push)
 jobs:
   run-analysis:
     runs-on: ubuntu-latest

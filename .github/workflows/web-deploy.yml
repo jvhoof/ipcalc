@@ -1,9 +1,9 @@
-name: "[BETA] Deploy Vue Application"
+name: "[Web] Deploy Vue Application"
 
 on:
   push:
     branches:
-      - beta  # Trigger on push to main branch
+      - main  # Trigger on push to main branch
     paths-ignore:
       - '.github/workflows/*.yml'
       - 'skills/**'
@@ -46,7 +46,7 @@ jobs:
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
             ./dist/ \
-            ${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}:${{ vars.BETA_DEPLOY_PATH }}
+            ${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}:${{ vars.DEPLOY_PATH }}
       
       # Step 7: Clean up SSH key
       - name: Clean up
