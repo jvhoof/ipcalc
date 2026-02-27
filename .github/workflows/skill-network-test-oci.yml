@@ -54,6 +54,9 @@ jobs:
         working-directory: skills/ipcalc-for-cloud
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Generate Unique Identifier
         id: unique-id
         run: |
@@ -65,9 +68,6 @@ jobs:
           echo "VCN_NAME=$VCN_NAME" >> $GITHUB_ENV
           echo "VCN_DNS_LABEL=$VCN_DNS_LABEL" >> $GITHUB_ENV
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
-
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -294,6 +294,9 @@ jobs:
         working-directory: skills/ipcalc-for-cloud
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Generate Unique Identifier
         id: unique-id
         run: |
@@ -305,9 +308,6 @@ jobs:
           echo "VCN_NAME=$VCN_NAME" >> $GITHUB_ENV
           echo "VCN_DNS_LABEL=$VCN_DNS_LABEL" >> $GITHUB_ENV
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
-
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
