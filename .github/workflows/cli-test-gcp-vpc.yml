@@ -394,9 +394,9 @@ jobs:
             # Check hub-to-spoke peering
             echo "Checking $HUB_TO_SPOKE_NAME..."
             HUB_TO_SPOKE_STATUS=$(gcloud compute networks peerings list \
-              --network="${{ env.VPC_NAME }}" \
-              --filter="name=$HUB_TO_SPOKE_NAME" \
-              --format="value(state)" 2>/dev/null)
+              --network="${{ env.VPC_NAME }}" --flatten="peerings[]" \
+              --filter="peerings.name=$HUB_TO_SPOKE_NAME" \
+              --format="value(peerings.state)" 2>/dev/null)
 
             if [ -z "$HUB_TO_SPOKE_STATUS" ]; then
               echo "❌ Peering $HUB_TO_SPOKE_NAME not found!"
@@ -413,9 +413,9 @@ jobs:
             SPOKE_VPC="${{ env.VPC_NAME }}-spoke${spoke_num}"
             echo "Checking $SPOKE_TO_HUB_NAME..."
             SPOKE_TO_HUB_STATUS=$(gcloud compute networks peerings list \
-              --network="$SPOKE_VPC" \
-              --filter="name=$SPOKE_TO_HUB_NAME" \
-              --format="value(state)" 2>/dev/null)
+              --network="$SPOKE_VPC" --flatten="peerings[]" \
+              --filter="peerings.name=$SPOKE_TO_HUB_NAME" \
+              --format="value(peerings.state)" 2>/dev/null)
 
             if [ -z "$SPOKE_TO_HUB_STATUS" ]; then
               echo "❌ Peering $SPOKE_TO_HUB_NAME not found!"
@@ -622,9 +622,9 @@ jobs:
             # Check hub-to-spoke peering
             echo "Checking $HUB_TO_SPOKE_NAME..."
             HUB_TO_SPOKE_STATUS=$(gcloud compute networks peerings list \
-              --network="${{ env.VPC_NAME }}" \
-              --filter="name=$HUB_TO_SPOKE_NAME" \
-              --format="value(state)" 2>/dev/null)
+              --network="${{ env.VPC_NAME }}" --flatten="peerings[]" \
+              --filter="peerings.name=$HUB_TO_SPOKE_NAME" \
+              --format="value(peerings.state)" 2>/dev/null)
 
             if [ -z "$HUB_TO_SPOKE_STATUS" ]; then
               echo "❌ Peering $HUB_TO_SPOKE_NAME not found!"
@@ -641,9 +641,9 @@ jobs:
             SPOKE_VPC="${{ env.VPC_NAME }}-spoke${spoke_num}"
             echo "Checking $SPOKE_TO_HUB_NAME..."
             SPOKE_TO_HUB_STATUS=$(gcloud compute networks peerings list \
-              --network="$SPOKE_VPC" \
-              --filter="name=$SPOKE_TO_HUB_NAME" \
-              --format="value(state)" 2>/dev/null)
+              --network="$SPOKE_VPC" --flatten="peerings[]" \
+              --filter="peerings.name=$SPOKE_TO_HUB_NAME" \
+              --format="value(peerings.state)" 2>/dev/null)
 
             if [ -z "$SPOKE_TO_HUB_STATUS" ]; then
               echo "❌ Peering $SPOKE_TO_HUB_NAME not found!"
