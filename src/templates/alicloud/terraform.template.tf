@@ -66,8 +66,8 @@ resource "alicloud_vpc" "vpc" {
 # ========================================
 
 resource "alicloud_security_group" "sg" {
-  name        = "${var.vpc_name}-sg"
-  description = "Security group for ${var.vpc_name}"
+  security_group_name = "${var.vpc_name}-sg"
+  description         = "Security group for ${var.vpc_name}"
   vpc_id      = alicloud_vpc.vpc.id
 
   tags = {

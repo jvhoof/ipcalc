@@ -48,6 +48,7 @@ jobs:
 
     permissions:
       contents: read
+      id-token: write  # Required for OIDC authentication
 
     defaults:
       run:
@@ -96,12 +97,23 @@ jobs:
         with:
           terraform_version: "1.9.0"
 
+      - name: Configure Alibaba Cloud Credentials (OIDC)
+        uses: aliyun/configure-aliyun-credentials-action@v1
+        with:
+          role-to-assume: ${{ secrets.ALICLOUD_ROLE_ARN }}
+          oidc-provider-arn: ${{ secrets.ALICLOUD_OIDC_PROVIDER_ARN }}
+          role-session-name: 'github-action-terraform'
+          role-session-expiration: 3600
+
+      - name: Export credentials for Terraform and Aliyun CLI
+        run: |
+          echo "ALICLOUD_ACCESS_KEY=$ALIBABACLOUD_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "ALICLOUD_SECRET_KEY=$ALIBABACLOUD_ACCESS_KEY_SECRET" >> $GITHUB_ENV
+          echo "ALICLOUD_SECURITY_TOKEN=$ALIBABACLOUD_SECURITY_TOKEN" >> $GITHUB_ENV
+
       - name: Initialize and Apply Terraform
         id: deploy
         working-directory: /tmp
-        env:
-          ALICLOUD_ACCESS_KEY: ${{ secrets.ALICLOUD_ACCESS_KEY }}
-          ALICLOUD_SECRET_KEY: ${{ secrets.ALICLOUD_SECRET_KEY }}
         run: |
           terraform init
           terraform validate
@@ -130,8 +142,9 @@ jobs:
       - name: Configure Aliyun CLI
         run: |
           aliyun configure set \
-            --access-key-id "${{ secrets.ALICLOUD_ACCESS_KEY }}" \
-            --access-key-secret "${{ secrets.ALICLOUD_SECRET_KEY }}" \
+            --access-key-id "$ALIBABACLOUD_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIBABACLOUD_ACCESS_KEY_SECRET" \
+            --sts-token "$ALIBABACLOUD_SECURITY_TOKEN" \
             --region "${{ env.ALICLOUD_REGION }}" \
             --language en
 
@@ -205,9 +218,6 @@ jobs:
       - name: Cleanup Resources
         if: always()
         working-directory: /tmp
-        env:
-          ALICLOUD_ACCESS_KEY: ${{ secrets.ALICLOUD_ACCESS_KEY }}
-          ALICLOUD_SECRET_KEY: ${{ secrets.ALICLOUD_SECRET_KEY }}
         run: |
           echo "Cleaning up resources..."
           if terraform destroy -auto-approve \
@@ -241,11 +251,11 @@ jobs:
   # ============================================================
   deploy-with-aliyun-cli:
     name: Aliyun CLI deployment and validation
-    needs: deploy-with-terraform
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
+      id-token: write  # Required for OIDC authentication
 
     defaults:
       run:
@@ -289,6 +299,14 @@ jobs:
           echo "Aliyun CLI script generated successfully"
           cat /tmp/deploy-alicloud.sh
 
+      - name: Configure Alibaba Cloud Credentials (OIDC)
+        uses: aliyun/configure-aliyun-credentials-action@v1
+        with:
+          role-to-assume: ${{ secrets.ALICLOUD_ROLE_ARN }}
+          oidc-provider-arn: ${{ secrets.ALICLOUD_OIDC_PROVIDER_ARN }}
+          role-session-name: 'github-action-aliyun-cli'
+          role-session-expiration: 3600
+
       - name: Install Aliyun CLI
         run: |
           curl -sSL https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz -o aliyun-cli.tgz
@@ -299,8 +317,9 @@ jobs:
       - name: Configure Aliyun CLI
         run: |
           aliyun configure set \
-            --access-key-id "${{ secrets.ALICLOUD_ACCESS_KEY }}" \
-            --access-key-secret "${{ secrets.ALICLOUD_SECRET_KEY }}" \
+            --access-key-id "$ALIBABACLOUD_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIBABACLOUD_ACCESS_KEY_SECRET" \
+            --sts-token "$ALIBABACLOUD_SECURITY_TOKEN" \
             --region "${{ env.ALICLOUD_REGION }}" \
             --language en
 
