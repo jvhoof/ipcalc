@@ -43,7 +43,7 @@ env:
 
 jobs:
   deploy-with-arm-template:
-    name: Deploy and Test with ARM Template
+    name: ARM template deployment and validation
     runs-on: ubuntu-latest
 
     steps:
@@ -252,7 +252,7 @@ jobs:
           echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
 
   deploy-with-azure-cli:
-    name: Deploy and Test with Azure CLI
+    name: Azure CLI deployment and validation
     runs-on: ubuntu-latest
 
     steps:
@@ -449,7 +449,7 @@ jobs:
           echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
 
   deploy-with-terraform:
-    name: Deploy and Test with Terraform
+    name: Terraform deployment and validation
     runs-on: ubuntu-latest
 
     steps:
@@ -692,7 +692,7 @@ jobs:
           echo "✅ Cleanup completed"
 
   deploy-with-powershell:
-    name: Deploy and Test with PowerShell
+    name: Powershell deployment and validation
     runs-on: ubuntu-latest
 
     steps:
@@ -893,7 +893,7 @@ jobs:
           echo "Resource group ${{ env.RESOURCE_GROUP }} will be deleted shortly"
 
   deploy-with-bicep:
-    name: Deploy and Test with Bicep
+    name: Bicep deployment and validation
     runs-on: ubuntu-latest
 
     steps:
@@ -1106,7 +1106,7 @@ jobs:
   # ========================================
 
   deploy-peering-with-azure-cli:
-    name: Deploy and Test VNET Peering with Azure CLI
+    name: Azure CLI VNET peering deployment and validation
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1198,7 +1198,7 @@ jobs:
           az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
 
   deploy-peering-with-terraform:
-    name: Deploy and Test VNET Peering with Terraform
+    name: Terraform VNET peering deployment and validation
     runs-on: ubuntu-latest
 
     steps:
@@ -1290,7 +1290,7 @@ jobs:
           az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
 
   deploy-peering-with-arm-template:
-    name: Deploy and Test VNET Peering with ARM Template
+    name: ARM template VNET peering deployment and validation
     runs-on: ubuntu-latest
 
     steps:
@@ -1368,7 +1368,7 @@ jobs:
           az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
 
   deploy-peering-with-powershell:
-    name: Deploy and Test VNET Peering with PowerShell
+    name: PowerShell VNET peering deployment and validation
     runs-on: ubuntu-latest
 
     steps:
@@ -1473,7 +1473,7 @@ jobs:
           az group delete --name ${{ env.RESOURCE_GROUP }} --yes --no-wait
 
   deploy-peering-with-bicep:
-    name: Deploy and Test VNET Peering with Bicep
+    name: Bicep VNET peering deployment and validation
     runs-on: ubuntu-latest
 
     steps:
