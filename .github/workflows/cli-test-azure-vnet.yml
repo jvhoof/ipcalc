@@ -1174,6 +1174,108 @@ jobs:
       - name: Execute Azure CLI Deployment
         run: /tmp/deploy-vnet-peering-generated.sh
 
+      - name: Validate VNETs
+        id: validate-vnets
+        run: |
+          echo "🔍 Validating VNET deployments..."
+          HUB_CIDR="10.0.0.0/16"
+          SPOKE_CIDR_LIST=("10.1.0.0/16" "10.2.0.0/16" "10.3.0.0/16")
+
+          # Validate hub VNET
+          echo "Checking hub VNET: ${{ env.VNET_NAME }}..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ Hub VNET not found!"
+            exit 1
+          fi
+          echo "✅ Hub VNET exists: $VNET_EXISTS"
+
+          HUB_VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+          if [ "$HUB_VNET_ADDRESS" != "$HUB_CIDR" ]; then
+            echo "❌ Hub VNET CIDR mismatch! Expected: $HUB_CIDR, Got: $HUB_VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ Hub VNET CIDR is correct: $HUB_VNET_ADDRESS"
+
+          HUB_SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+          echo "✅ Hub VNET has $HUB_SUBNET_COUNT subnet(s)"
+
+          FAILED_HUB_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_HUB_SUBNETS" ]; then
+            echo "❌ Hub VNET subnets failed to provision: $FAILED_HUB_SUBNETS"
+            exit 1
+          fi
+          echo "✅ All hub VNET subnets provisioned successfully"
+
+          # Validate each spoke VNET
+          for spoke_num in 1 2 3; do
+            SPOKE_VNET="${{ env.JOB_PREFIX }}-spoke${spoke_num}-vnet"
+            EXPECTED_CIDR="${SPOKE_CIDR_LIST[$((spoke_num-1))]}"
+
+            echo "Checking spoke VNET: $SPOKE_VNET..."
+            SPOKE_EXISTS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "name" -o tsv 2>/dev/null || echo "")
+
+            if [ -z "$SPOKE_EXISTS" ]; then
+              echo "❌ Spoke VNET $SPOKE_VNET not found!"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET exists: $SPOKE_EXISTS"
+
+            SPOKE_VNET_ADDRESS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+            if [ "$SPOKE_VNET_ADDRESS" != "$EXPECTED_CIDR" ]; then
+              echo "❌ Spoke $spoke_num VNET CIDR mismatch! Expected: $EXPECTED_CIDR, Got: $SPOKE_VNET_ADDRESS"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET CIDR is correct: $SPOKE_VNET_ADDRESS"
+
+            SPOKE_SUBNET_COUNT=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "length(@)" -o tsv)
+            echo "✅ Spoke $spoke_num VNET has $SPOKE_SUBNET_COUNT subnet(s)"
+
+            FAILED_SPOKE_SUBNETS=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+            if [ -n "$FAILED_SPOKE_SUBNETS" ]; then
+              echo "❌ Spoke $spoke_num VNET subnets failed to provision: $FAILED_SPOKE_SUBNETS"
+              exit 1
+            fi
+            echo "✅ All Spoke $spoke_num VNET subnets provisioned successfully"
+          done
+
+          echo ""
+          echo "📋 All VNETs in resource group:"
+          az network vnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[].{Name:name, AddressSpace:addressSpace.addressPrefixes[0], ProvisioningState:provisioningState}" \
+            -o table
+          echo "✅ All VNETs validated successfully!"
+
       - name: Validate VNET Peering
         run: |
           echo "🔍 Validating VNET peering connections..."
@@ -1264,6 +1366,108 @@ jobs:
             -var "location=${{ env.AZURE_LOCATION }}" \
             -var "prefix=${{ env.JOB_PREFIX }}"
 
+      - name: Validate VNETs
+        id: validate-vnets
+        run: |
+          echo "🔍 Validating VNET deployments..."
+          HUB_CIDR="10.0.0.0/16"
+          SPOKE_CIDR_LIST=("10.1.0.0/16" "10.2.0.0/16" "10.3.0.0/16")
+
+          # Validate hub VNET
+          echo "Checking hub VNET: ${{ env.VNET_NAME }}..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ Hub VNET not found!"
+            exit 1
+          fi
+          echo "✅ Hub VNET exists: $VNET_EXISTS"
+
+          HUB_VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+          if [ "$HUB_VNET_ADDRESS" != "$HUB_CIDR" ]; then
+            echo "❌ Hub VNET CIDR mismatch! Expected: $HUB_CIDR, Got: $HUB_VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ Hub VNET CIDR is correct: $HUB_VNET_ADDRESS"
+
+          HUB_SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+          echo "✅ Hub VNET has $HUB_SUBNET_COUNT subnet(s)"
+
+          FAILED_HUB_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_HUB_SUBNETS" ]; then
+            echo "❌ Hub VNET subnets failed to provision: $FAILED_HUB_SUBNETS"
+            exit 1
+          fi
+          echo "✅ All hub VNET subnets provisioned successfully"
+
+          # Validate each spoke VNET
+          for spoke_num in 1 2 3; do
+            SPOKE_VNET="${{ env.JOB_PREFIX }}-spoke${spoke_num}-vnet"
+            EXPECTED_CIDR="${SPOKE_CIDR_LIST[$((spoke_num-1))]}"
+
+            echo "Checking spoke VNET: $SPOKE_VNET..."
+            SPOKE_EXISTS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "name" -o tsv 2>/dev/null || echo "")
+
+            if [ -z "$SPOKE_EXISTS" ]; then
+              echo "❌ Spoke VNET $SPOKE_VNET not found!"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET exists: $SPOKE_EXISTS"
+
+            SPOKE_VNET_ADDRESS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+            if [ "$SPOKE_VNET_ADDRESS" != "$EXPECTED_CIDR" ]; then
+              echo "❌ Spoke $spoke_num VNET CIDR mismatch! Expected: $EXPECTED_CIDR, Got: $SPOKE_VNET_ADDRESS"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET CIDR is correct: $SPOKE_VNET_ADDRESS"
+
+            SPOKE_SUBNET_COUNT=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "length(@)" -o tsv)
+            echo "✅ Spoke $spoke_num VNET has $SPOKE_SUBNET_COUNT subnet(s)"
+
+            FAILED_SPOKE_SUBNETS=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+            if [ -n "$FAILED_SPOKE_SUBNETS" ]; then
+              echo "❌ Spoke $spoke_num VNET subnets failed to provision: $FAILED_SPOKE_SUBNETS"
+              exit 1
+            fi
+            echo "✅ All Spoke $spoke_num VNET subnets provisioned successfully"
+          done
+
+          echo ""
+          echo "📋 All VNETs in resource group:"
+          az network vnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[].{Name:name, AddressSpace:addressSpace.addressPrefixes[0], ProvisioningState:provisioningState}" \
+            -o table
+          echo "✅ All VNETs validated successfully!"
+
       - name: Validate VNET Peering
         run: |
           for spoke_num in 1 2 3; do
@@ -1345,6 +1549,108 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --template-file /tmp/test-arm-template-peering.json \
             --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.JOB_PREFIX }}"
+
+      - name: Validate VNETs
+        id: validate-vnets
+        run: |
+          echo "🔍 Validating VNET deployments..."
+          HUB_CIDR="10.0.0.0/16"
+          SPOKE_CIDR_LIST=("10.1.0.0/16" "10.2.0.0/16" "10.3.0.0/16")
+
+          # Validate hub VNET
+          echo "Checking hub VNET: ${{ env.VNET_NAME }}..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ Hub VNET not found!"
+            exit 1
+          fi
+          echo "✅ Hub VNET exists: $VNET_EXISTS"
+
+          HUB_VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+          if [ "$HUB_VNET_ADDRESS" != "$HUB_CIDR" ]; then
+            echo "❌ Hub VNET CIDR mismatch! Expected: $HUB_CIDR, Got: $HUB_VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ Hub VNET CIDR is correct: $HUB_VNET_ADDRESS"
+
+          HUB_SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+          echo "✅ Hub VNET has $HUB_SUBNET_COUNT subnet(s)"
+
+          FAILED_HUB_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_HUB_SUBNETS" ]; then
+            echo "❌ Hub VNET subnets failed to provision: $FAILED_HUB_SUBNETS"
+            exit 1
+          fi
+          echo "✅ All hub VNET subnets provisioned successfully"
+
+          # Validate each spoke VNET
+          for spoke_num in 1 2 3; do
+            SPOKE_VNET="${{ env.JOB_PREFIX }}-spoke${spoke_num}-vnet"
+            EXPECTED_CIDR="${SPOKE_CIDR_LIST[$((spoke_num-1))]}"
+
+            echo "Checking spoke VNET: $SPOKE_VNET..."
+            SPOKE_EXISTS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "name" -o tsv 2>/dev/null || echo "")
+
+            if [ -z "$SPOKE_EXISTS" ]; then
+              echo "❌ Spoke VNET $SPOKE_VNET not found!"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET exists: $SPOKE_EXISTS"
+
+            SPOKE_VNET_ADDRESS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+            if [ "$SPOKE_VNET_ADDRESS" != "$EXPECTED_CIDR" ]; then
+              echo "❌ Spoke $spoke_num VNET CIDR mismatch! Expected: $EXPECTED_CIDR, Got: $SPOKE_VNET_ADDRESS"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET CIDR is correct: $SPOKE_VNET_ADDRESS"
+
+            SPOKE_SUBNET_COUNT=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "length(@)" -o tsv)
+            echo "✅ Spoke $spoke_num VNET has $SPOKE_SUBNET_COUNT subnet(s)"
+
+            FAILED_SPOKE_SUBNETS=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+            if [ -n "$FAILED_SPOKE_SUBNETS" ]; then
+              echo "❌ Spoke $spoke_num VNET subnets failed to provision: $FAILED_SPOKE_SUBNETS"
+              exit 1
+            fi
+            echo "✅ All Spoke $spoke_num VNET subnets provisioned successfully"
+          done
+
+          echo ""
+          echo "📋 All VNETs in resource group:"
+          az network vnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[].{Name:name, AddressSpace:addressSpace.addressPrefixes[0], ProvisioningState:provisioningState}" \
+            -o table
+          echo "✅ All VNETs validated successfully!"
 
       - name: Validate VNET Peering
         run: |
@@ -1449,6 +1755,108 @@ jobs:
           $result = & /tmp/deploy-vnet-peering-generated.ps1
           Write-Host "✅ Deployment script executed successfully"
 
+      - name: Validate VNETs
+        id: validate-vnets
+        run: |
+          echo "🔍 Validating VNET deployments..."
+          HUB_CIDR="10.0.0.0/16"
+          SPOKE_CIDR_LIST=("10.1.0.0/16" "10.2.0.0/16" "10.3.0.0/16")
+
+          # Validate hub VNET
+          echo "Checking hub VNET: ${{ env.VNET_NAME }}..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ Hub VNET not found!"
+            exit 1
+          fi
+          echo "✅ Hub VNET exists: $VNET_EXISTS"
+
+          HUB_VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+          if [ "$HUB_VNET_ADDRESS" != "$HUB_CIDR" ]; then
+            echo "❌ Hub VNET CIDR mismatch! Expected: $HUB_CIDR, Got: $HUB_VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ Hub VNET CIDR is correct: $HUB_VNET_ADDRESS"
+
+          HUB_SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+          echo "✅ Hub VNET has $HUB_SUBNET_COUNT subnet(s)"
+
+          FAILED_HUB_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_HUB_SUBNETS" ]; then
+            echo "❌ Hub VNET subnets failed to provision: $FAILED_HUB_SUBNETS"
+            exit 1
+          fi
+          echo "✅ All hub VNET subnets provisioned successfully"
+
+          # Validate each spoke VNET
+          for spoke_num in 1 2 3; do
+            SPOKE_VNET="${{ env.JOB_PREFIX }}-spoke${spoke_num}-vnet"
+            EXPECTED_CIDR="${SPOKE_CIDR_LIST[$((spoke_num-1))]}"
+
+            echo "Checking spoke VNET: $SPOKE_VNET..."
+            SPOKE_EXISTS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "name" -o tsv 2>/dev/null || echo "")
+
+            if [ -z "$SPOKE_EXISTS" ]; then
+              echo "❌ Spoke VNET $SPOKE_VNET not found!"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET exists: $SPOKE_EXISTS"
+
+            SPOKE_VNET_ADDRESS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+            if [ "$SPOKE_VNET_ADDRESS" != "$EXPECTED_CIDR" ]; then
+              echo "❌ Spoke $spoke_num VNET CIDR mismatch! Expected: $EXPECTED_CIDR, Got: $SPOKE_VNET_ADDRESS"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET CIDR is correct: $SPOKE_VNET_ADDRESS"
+
+            SPOKE_SUBNET_COUNT=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "length(@)" -o tsv)
+            echo "✅ Spoke $spoke_num VNET has $SPOKE_SUBNET_COUNT subnet(s)"
+
+            FAILED_SPOKE_SUBNETS=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+            if [ -n "$FAILED_SPOKE_SUBNETS" ]; then
+              echo "❌ Spoke $spoke_num VNET subnets failed to provision: $FAILED_SPOKE_SUBNETS"
+              exit 1
+            fi
+            echo "✅ All Spoke $spoke_num VNET subnets provisioned successfully"
+          done
+
+          echo ""
+          echo "📋 All VNETs in resource group:"
+          az network vnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[].{Name:name, AddressSpace:addressSpace.addressPrefixes[0], ProvisioningState:provisioningState}" \
+            -o table
+          echo "✅ All VNETs validated successfully!"
+
       - name: Validate VNET Peering
         run: |
           echo "🔍 Validating VNET peering connections..."
@@ -1544,6 +1952,108 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --template-file /tmp/test-bicep-peering.bicep \
             --parameters location="${{ env.AZURE_LOCATION }}" prefix="${{ env.JOB_PREFIX }}"
+
+      - name: Validate VNETs
+        id: validate-vnets
+        run: |
+          echo "🔍 Validating VNET deployments..."
+          HUB_CIDR="10.0.0.0/16"
+          SPOKE_CIDR_LIST=("10.1.0.0/16" "10.2.0.0/16" "10.3.0.0/16")
+
+          # Validate hub VNET
+          echo "Checking hub VNET: ${{ env.VNET_NAME }}..."
+          VNET_EXISTS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$VNET_EXISTS" ]; then
+            echo "❌ Hub VNET not found!"
+            exit 1
+          fi
+          echo "✅ Hub VNET exists: $VNET_EXISTS"
+
+          HUB_VNET_ADDRESS=$(az network vnet show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.VNET_NAME }} \
+            --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+          if [ "$HUB_VNET_ADDRESS" != "$HUB_CIDR" ]; then
+            echo "❌ Hub VNET CIDR mismatch! Expected: $HUB_CIDR, Got: $HUB_VNET_ADDRESS"
+            exit 1
+          fi
+          echo "✅ Hub VNET CIDR is correct: $HUB_VNET_ADDRESS"
+
+          HUB_SUBNET_COUNT=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "length(@)" -o tsv)
+          echo "✅ Hub VNET has $HUB_SUBNET_COUNT subnet(s)"
+
+          FAILED_HUB_SUBNETS=$(az network vnet subnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --vnet-name ${{ env.VNET_NAME }} \
+            --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+          if [ -n "$FAILED_HUB_SUBNETS" ]; then
+            echo "❌ Hub VNET subnets failed to provision: $FAILED_HUB_SUBNETS"
+            exit 1
+          fi
+          echo "✅ All hub VNET subnets provisioned successfully"
+
+          # Validate each spoke VNET
+          for spoke_num in 1 2 3; do
+            SPOKE_VNET="${{ env.JOB_PREFIX }}-spoke${spoke_num}-vnet"
+            EXPECTED_CIDR="${SPOKE_CIDR_LIST[$((spoke_num-1))]}"
+
+            echo "Checking spoke VNET: $SPOKE_VNET..."
+            SPOKE_EXISTS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "name" -o tsv 2>/dev/null || echo "")
+
+            if [ -z "$SPOKE_EXISTS" ]; then
+              echo "❌ Spoke VNET $SPOKE_VNET not found!"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET exists: $SPOKE_EXISTS"
+
+            SPOKE_VNET_ADDRESS=$(az network vnet show \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name "$SPOKE_VNET" \
+              --query "addressSpace.addressPrefixes[0]" -o tsv)
+
+            if [ "$SPOKE_VNET_ADDRESS" != "$EXPECTED_CIDR" ]; then
+              echo "❌ Spoke $spoke_num VNET CIDR mismatch! Expected: $EXPECTED_CIDR, Got: $SPOKE_VNET_ADDRESS"
+              exit 1
+            fi
+            echo "✅ Spoke $spoke_num VNET CIDR is correct: $SPOKE_VNET_ADDRESS"
+
+            SPOKE_SUBNET_COUNT=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "length(@)" -o tsv)
+            echo "✅ Spoke $spoke_num VNET has $SPOKE_SUBNET_COUNT subnet(s)"
+
+            FAILED_SPOKE_SUBNETS=$(az network vnet subnet list \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --vnet-name "$SPOKE_VNET" \
+              --query "[?provisioningState!='Succeeded'].name" -o tsv)
+
+            if [ -n "$FAILED_SPOKE_SUBNETS" ]; then
+              echo "❌ Spoke $spoke_num VNET subnets failed to provision: $FAILED_SPOKE_SUBNETS"
+              exit 1
+            fi
+            echo "✅ All Spoke $spoke_num VNET subnets provisioned successfully"
+          done
+
+          echo ""
+          echo "📋 All VNETs in resource group:"
+          az network vnet list \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[].{Name:name, AddressSpace:addressSpace.addressPrefixes[0], ProvisioningState:provisioningState}" \
+            -o table
+          echo "✅ All VNETs validated successfully!"
 
       - name: Validate VNET Peering
         run: |
