@@ -1,0 +1,443 @@
+name: '[Skill] Alibaba Cloud VPC Deployment Test'
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: 'Resource prefix for naming'
+        required: false
+        default: 'ipcalc-qa'
+      region:
+        description: 'Alibaba Cloud region'
+        required: false
+        default: 'cn-hangzhou'
+      vpc_cidr:
+        description: 'VPC CIDR block'
+        required: false
+        default: '172.16.1.0/24'
+      subnet_count:
+        description: 'Number of vSwitches to create'
+        required: false
+        default: '3'
+  push:
+    branches:
+      - main
+    paths:
+      - 'skills/ipcalc-for-cloud/scripts/**'
+      - 'skills/ipcalc-for-cloud/templates/alicloud/**'
+      - '.github/workflows/skill-network-test-alicloud.yml'
+  pull_request:
+    paths:
+      - 'skills/ipcalc-for-cloud/scripts/**'
+      - 'skills/ipcalc-for-cloud/templates/alicloud/**'
+      - '.github/workflows/skill-network-test-alicloud.yml'
+
+env:
+  RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.ALICLOUD_RESOURCE_PREFIX || 'ipcalc-test' }}
+  ALICLOUD_REGION: ${{ github.event.inputs.region || vars.ALICLOUD_REGION || 'cn-hangzhou' }}
+  VPC_CIDR: ${{ github.event.inputs.vpc_cidr || vars.ALICLOUD_VPC_CIDR || '172.16.1.0/24' }}
+  SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.ALICLOUD_SUBNET_COUNT || '3' }}
+
+jobs:
+  # ============================================================
+  # Deploy with Terraform
+  # ============================================================
+  deploy-with-terraform:
+    name: Terraform deployment and validation
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: skills/ipcalc-for-cloud
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          VPC_NAME="${{ env.RESOURCE_PREFIX }}-${UNIQUE_ID}-vpc"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${UNIQUE_ID}"
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate Terraform Configuration using Python ipcalc skill
+        run: |
+          echo "Generating Terraform configuration using Python ipcalc skill..."
+          uv run python scripts/ipcalc.py \
+            --provider alicloud \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output terraform \
+            --file /tmp/test-terraform.tf
+
+          echo "Terraform configuration generated successfully"
+          cat /tmp/test-terraform.tf
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Initialize and Apply Terraform
+        id: deploy
+        working-directory: /tmp
+        env:
+          ALICLOUD_ACCESS_KEY: ${{ secrets.ALICLOUD_ACCESS_KEY }}
+          ALICLOUD_SECRET_KEY: ${{ secrets.ALICLOUD_SECRET_KEY }}
+        run: |
+          terraform init
+          terraform validate
+          terraform plan \
+            -var "region=${{ env.ALICLOUD_REGION }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}" \
+            -out=tfplan
+          terraform apply -auto-approve tfplan
+
+          VPC_ID=$(terraform output -raw vpc_id)
+          VPC_NAME_OUT=$(terraform output -raw vpc_name)
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+
+          echo "Deployment completed"
+          echo "VPC Name: $VPC_NAME_OUT"
+          echo "VPC ID: $VPC_ID"
+
+      - name: Install Aliyun CLI
+        run: |
+          curl -sSL https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz -o aliyun-cli.tgz
+          tar -xzf aliyun-cli.tgz
+          sudo mv aliyun /usr/local/bin/
+          aliyun version
+
+      - name: Configure Aliyun CLI
+        run: |
+          aliyun configure set \
+            --access-key-id "${{ secrets.ALICLOUD_ACCESS_KEY }}" \
+            --access-key-secret "${{ secrets.ALICLOUD_SECRET_KEY }}" \
+            --region "${{ env.ALICLOUD_REGION }}" \
+            --language en
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "Validating deployment..."
+
+          VPC_EXISTS=$(aliyun vpc DescribeVpcs \
+            --RegionId "${{ env.ALICLOUD_REGION }}" \
+            --VpcName "${{ env.VPC_NAME }}" \
+            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | tail -n 1 | tr -d ' ' || echo "")
+
+          if [ -z "$VPC_EXISTS" ]; then
+            echo "VPC not found!"
+            exit 1
+          fi
+          echo "VPC exists: $VPC_EXISTS"
+
+          VSWITCH_COUNT=$(aliyun vpc DescribeVSwitches \
+            --RegionId "${{ env.ALICLOUD_REGION }}" \
+            --VpcId "${{ env.VPC_ID }}" \
+            --output cols=VSwitchId rows=VSwitches.VSwitch[] 2>/dev/null | tail -n +2 | grep -c . || echo "0")
+
+          echo "Found $VSWITCH_COUNT vSwitch(es)"
+
+          if [ "$VSWITCH_COUNT" -lt 1 ]; then
+            echo "No vSwitches found!"
+            exit 1
+          fi
+
+          aliyun vpc DescribeVSwitches \
+            --RegionId "${{ env.ALICLOUD_REGION }}" \
+            --VpcId "${{ env.VPC_ID }}" \
+            --output cols=VSwitchId,VSwitchName,CidrBlock,ZoneId rows=VSwitches.VSwitch[]
+
+          echo "Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## Alibaba Cloud VPC Deployment Test Report (Python Skill)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Method:** Terraform" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC Name:** ${{ env.VPC_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC ID:** ${{ env.VPC_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.ALICLOUD_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC CIDR:** ${{ env.VPC_CIDR }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### Validation Status: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Validation Status: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### vSwitches Created:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            aliyun vpc DescribeVSwitches \
+              --RegionId "${{ env.ALICLOUD_REGION }}" \
+              --VpcId "${{ env.VPC_ID }}" \
+              --output cols=VSwitchId,VSwitchName,CidrBlock,ZoneId rows=VSwitches.VSwitch[] >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Failed to list vSwitches" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "VPC ID not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        working-directory: /tmp
+        env:
+          ALICLOUD_ACCESS_KEY: ${{ secrets.ALICLOUD_ACCESS_KEY }}
+          ALICLOUD_SECRET_KEY: ${{ secrets.ALICLOUD_SECRET_KEY }}
+        run: |
+          echo "Cleaning up resources..."
+          if terraform destroy -auto-approve \
+            -var "region=${{ env.ALICLOUD_REGION }}" \
+            -var "vpc_name=${{ env.VPC_NAME }}"; then
+            echo "Terraform destroy completed"
+          else
+            echo "Terraform destroy failed, attempting manual cleanup..."
+            if [ -n "${{ env.VPC_ID }}" ]; then
+              # Delete vSwitches first
+              VSWITCH_IDS=$(aliyun vpc DescribeVSwitches \
+                --RegionId "${{ env.ALICLOUD_REGION }}" \
+                --VpcId "${{ env.VPC_ID }}" \
+                --output cols=VSwitchId rows=VSwitches.VSwitch[] 2>/dev/null | tail -n +2 | tr -d ' ' || echo "")
+              for vswitch_id in $VSWITCH_IDS; do
+                [ -n "$vswitch_id" ] && aliyun vpc DeleteVSwitch \
+                  --VSwitchId "$vswitch_id" || true
+                sleep 2
+              done
+
+              # Delete VPC
+              aliyun vpc DeleteVpc \
+                --RegionId "${{ env.ALICLOUD_REGION }}" \
+                --VpcId "${{ env.VPC_ID }}" || true
+              echo "Manual cleanup completed"
+            fi
+          fi
+
+  # ============================================================
+  # Deploy with Aliyun CLI
+  # ============================================================
+  deploy-with-aliyun-cli:
+    name: Aliyun CLI deployment and validation
+    needs: deploy-with-terraform
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: skills/ipcalc-for-cloud
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Unique Identifier
+        id: unique-id
+        run: |
+          UNIQUE_ID=$(echo $RANDOM | md5sum | head -c 4)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          VPC_NAME="${{ env.RESOURCE_PREFIX }}-${UNIQUE_ID}-vpc"
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${UNIQUE_ID}"
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Generate Aliyun CLI Script using Python ipcalc skill
+        run: |
+          echo "Generating Aliyun CLI script using Python ipcalc skill..."
+          uv run python scripts/ipcalc.py \
+            --provider alicloud \
+            --cidr ${{ env.VPC_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --output aliyun \
+            --file /tmp/deploy-alicloud.sh
+
+          echo "Aliyun CLI script generated successfully"
+          cat /tmp/deploy-alicloud.sh
+
+      - name: Install Aliyun CLI
+        run: |
+          curl -sSL https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz -o aliyun-cli.tgz
+          tar -xzf aliyun-cli.tgz
+          sudo mv aliyun /usr/local/bin/
+          aliyun version
+
+      - name: Configure Aliyun CLI
+        run: |
+          aliyun configure set \
+            --access-key-id "${{ secrets.ALICLOUD_ACCESS_KEY }}" \
+            --access-key-secret "${{ secrets.ALICLOUD_SECRET_KEY }}" \
+            --region "${{ env.ALICLOUD_REGION }}" \
+            --language en
+
+      - name: Deploy using Aliyun CLI Script
+        id: deploy
+        run: |
+          # Customize VPC name and region in generated script
+          sed -i "s/REGION=.*/REGION=\"${{ env.ALICLOUD_REGION }}\"/" /tmp/deploy-alicloud.sh
+          sed -i "s/VPC_NAME=.*/VPC_NAME=\"${{ env.VPC_NAME }}\"/" /tmp/deploy-alicloud.sh
+
+          echo "Running Aliyun CLI deployment script..."
+          chmod +x /tmp/deploy-alicloud.sh
+          /tmp/deploy-alicloud.sh
+
+          # Retrieve VPC ID from the created VPC
+          VPC_ID=$(aliyun vpc DescribeVpcs \
+            --RegionId "${{ env.ALICLOUD_REGION }}" \
+            --VpcName "${{ env.VPC_NAME }}" \
+            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | tail -n 1 | tr -d ' ')
+
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+
+          echo "Deployment completed"
+          echo "VPC ID: $VPC_ID"
+
+      - name: Validate Deployment
+        id: validate
+        run: |
+          echo "Validating deployment..."
+
+          VPC_EXISTS=$(aliyun vpc DescribeVpcs \
+            --RegionId "${{ env.ALICLOUD_REGION }}" \
+            --VpcName "${{ env.VPC_NAME }}" \
+            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | tail -n 1 | tr -d ' ' || echo "")
+
+          if [ -z "$VPC_EXISTS" ]; then
+            echo "VPC not found!"
+            exit 1
+          fi
+          echo "VPC exists: $VPC_EXISTS"
+
+          # Validate VPC CIDR
+          VPC_CIDR_BLOCK=$(aliyun vpc DescribeVpcs \
+            --RegionId "${{ env.ALICLOUD_REGION }}" \
+            --VpcName "${{ env.VPC_NAME }}" \
+            --output cols=CidrBlock rows=Vpcs.Vpc[] 2>/dev/null | tail -n 1 | tr -d ' ' || echo "")
+
+          if [ "$VPC_CIDR_BLOCK" != "${{ env.VPC_CIDR }}" ]; then
+            echo "VPC CIDR mismatch! Expected: ${{ env.VPC_CIDR }}, Got: $VPC_CIDR_BLOCK"
+            exit 1
+          fi
+          echo "VPC CIDR is correct: $VPC_CIDR_BLOCK"
+
+          VSWITCH_COUNT=$(aliyun vpc DescribeVSwitches \
+            --RegionId "${{ env.ALICLOUD_REGION }}" \
+            --VpcId "${{ env.VPC_ID }}" \
+            --output cols=VSwitchId rows=VSwitches.VSwitch[] 2>/dev/null | tail -n +2 | grep -c . || echo "0")
+
+          echo "Found $VSWITCH_COUNT vSwitch(es)"
+
+          if [ "$VSWITCH_COUNT" -lt 1 ]; then
+            echo "No vSwitches found!"
+            exit 1
+          fi
+
+          aliyun vpc DescribeVSwitches \
+            --RegionId "${{ env.ALICLOUD_REGION }}" \
+            --VpcId "${{ env.VPC_ID }}" \
+            --output cols=VSwitchId,VSwitchName,CidrBlock,ZoneId rows=VSwitches.VSwitch[]
+
+          echo "Validation completed successfully!"
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          echo "## Alibaba Cloud VPC Deployment Test Report (Python Skill)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Method:** Aliyun CLI" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC Name:** ${{ env.VPC_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC ID:** ${{ env.VPC_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.ALICLOUD_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**VPC CIDR:** ${{ env.VPC_CIDR }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.validate.outcome }}" == "success" ]; then
+            echo "### Validation Status: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Validation Status: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### vSwitches Created:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            aliyun vpc DescribeVSwitches \
+              --RegionId "${{ env.ALICLOUD_REGION }}" \
+              --VpcId "${{ env.VPC_ID }}" \
+              --output cols=VSwitchId,VSwitchName,CidrBlock,ZoneId rows=VSwitches.VSwitch[] >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Failed to list vSwitches" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "VPC ID not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup Resources
+        if: always()
+        run: |
+          echo "Cleaning up resources..."
+          if [ -n "${{ env.VPC_ID }}" ]; then
+            # Delete vSwitches first
+            VSWITCH_IDS=$(aliyun vpc DescribeVSwitches \
+              --RegionId "${{ env.ALICLOUD_REGION }}" \
+              --VpcId "${{ env.VPC_ID }}" \
+              --output cols=VSwitchId rows=VSwitches.VSwitch[] 2>/dev/null | tail -n +2 | tr -d ' ' || echo "")
+            for vswitch_id in $VSWITCH_IDS; do
+              [ -n "$vswitch_id" ] && aliyun vpc DeleteVSwitch \
+                --VSwitchId "$vswitch_id" || true
+              sleep 2
+            done
+
+            # Delete security groups (non-default)
+            SG_IDS=$(aliyun ecs DescribeSecurityGroups \
+              --RegionId "${{ env.ALICLOUD_REGION }}" \
+              --VpcId "${{ env.VPC_ID }}" \
+              --output cols=SecurityGroupId rows=SecurityGroups.SecurityGroup[] 2>/dev/null | tail -n +2 | tr -d ' ' || echo "")
+            for sg_id in $SG_IDS; do
+              [ -n "$sg_id" ] && aliyun ecs DeleteSecurityGroup \
+                --RegionId "${{ env.ALICLOUD_REGION }}" \
+                --SecurityGroupId "$sg_id" || true
+            done
+
+            # Delete VPC
+            aliyun vpc DeleteVpc \
+              --RegionId "${{ env.ALICLOUD_REGION }}" \
+              --VpcId "${{ env.VPC_ID }}" || true
+            echo "Cleanup completed"
+          else
+            echo "VPC ID not available, skipping cleanup"
+          fi

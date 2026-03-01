@@ -57,10 +57,13 @@ CLOUD_PROVIDERS: Dict[str, CloudProviderConfig] = {
         'supported_outputs': ['info', 'json', 'oci', 'terraform']
     },
     'alicloud': {
-        'reserved_ip_count': 5,
+        'reserved_ip_count': 4,  # Network address + last 3 IPs reserved
         'max_cidr_prefix': 8,
         'min_cidr_prefix': 29,
-        'availability_zones': ['a', 'b', 'c', 'd', 'e', 'f'],
+        'availability_zones': [
+            'cn-hangzhou-a', 'cn-hangzhou-b', 'cn-hangzhou-c',
+            'cn-hangzhou-d', 'cn-hangzhou-e', 'cn-hangzhou-f'
+        ],
         'supported_outputs': ['info', 'json', 'aliyun', 'terraform']
     },
     'onpremises': {

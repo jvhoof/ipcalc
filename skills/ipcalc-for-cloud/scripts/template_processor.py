@@ -1166,6 +1166,117 @@ def process_oracle_terraform_template(template_content: str, data: Dict[str, Any
     return content
 
 
+def process_alicloud_aliyun_template(template_content: str, data: Dict[str, Any]) -> str:
+    """
+    Process AliCloud Aliyun CLI template.
+
+    Args:
+        template_content: Template file content with placeholders
+        data: Dictionary with vnetCidr/vpcCidr, subnets
+
+    Returns:
+        Processed Aliyun CLI shell script
+    """
+    content = template_content
+
+    # Generate vSwitch creation commands
+    vswitch_creation = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        zone = subnet.get('zone', 'cn-hangzhou-a')
+        vswitch_creation += f'echo "Creating vSwitch {idx} in {zone}..."\n'
+        vswitch_creation += f'VSWITCH{idx}_ID=$(aliyun vpc CreateVSwitch \\\n'
+        vswitch_creation += f'  --RegionId "${{REGION}}" \\\n'
+        vswitch_creation += f'  --VpcId "${{VPC_ID}}" \\\n'
+        vswitch_creation += f'  --ZoneId "{zone}" \\\n'
+        vswitch_creation += f'  --CidrBlock "{subnet["cidr"]}" \\\n'
+        vswitch_creation += f'  --VSwitchName "${{VPC_NAME}}-vswitch{idx}" \\\n'
+        vswitch_creation += f'  --Description "vSwitch {idx} for {zone}" \\\n'
+        vswitch_creation += f'  --output cols=VSwitchId rows=VSwitchId \\\n'
+        vswitch_creation += f'  | tail -n 1 | tr -d \' \')\n\n'
+        vswitch_creation += f'echo "vSwitch {idx} created with ID: ${{VSWITCH{idx}_ID}}"\n'
+        vswitch_creation += f'sleep 2\n\n'
+
+    # Replace placeholders
+    vpc_cidr = data.get('vpcCidr', data.get('vnetCidr', ''))
+    content = content.replace('{{vpcCidr}}', vpc_cidr)
+    content = content.replace('{{vSwitchCreation}}', vswitch_creation)
+
+    return content
+
+
+def process_alicloud_terraform_template(template_content: str, data: Dict[str, Any]) -> str:
+    """
+    Process AliCloud Terraform template.
+
+    Args:
+        template_content: Template file content with placeholders
+        data: Dictionary with vnetCidr/vpcCidr, subnets
+
+    Returns:
+        Processed Terraform HCL code
+    """
+    content = template_content
+
+    vpc_cidr = data.get('vpcCidr', data.get('vnetCidr', ''))
+
+    # Generate vSwitch variables
+    vswitch_variables = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        zone = subnet.get('zone', 'cn-hangzhou-a')
+        vswitch_variables += f'\nvariable "vswitch{idx}_cidr" {{\n'
+        vswitch_variables += f'  description = "CIDR block for vSwitch {idx}"\n'
+        vswitch_variables += f'  type        = string\n'
+        vswitch_variables += f'  default     = "{subnet["cidr"]}"\n'
+        vswitch_variables += '}\n'
+
+        vswitch_variables += f'\nvariable "vswitch{idx}_zone" {{\n'
+        vswitch_variables += f'  description = "Availability Zone for vSwitch {idx}"\n'
+        vswitch_variables += f'  type        = string\n'
+        vswitch_variables += f'  default     = "{zone}"\n'
+        vswitch_variables += '}\n'
+
+    # Generate vSwitch resources
+    vswitch_resources = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        vswitch_resources += f'resource "alicloud_vswitch" "vswitch{idx}" {{\n'
+        vswitch_resources += f'  vpc_id       = alicloud_vpc.vpc.id\n'
+        vswitch_resources += f'  cidr_block   = var.vswitch{idx}_cidr\n'
+        vswitch_resources += f'  zone_id      = var.vswitch{idx}_zone\n'
+        vswitch_resources += f'  vswitch_name = "${{var.vpc_name}}-vswitch{idx}"\n'
+        vswitch_resources += f'  description  = "vSwitch {idx} in ${{var.vswitch{idx}_zone}}"\n\n'
+        vswitch_resources += f'  tags = {{\n'
+        vswitch_resources += f'    Environment = "Production"\n'
+        vswitch_resources += f'    ManagedBy   = "Terraform"\n'
+        vswitch_resources += f'  }}\n'
+        vswitch_resources += '}\n\n'
+
+    # Generate vSwitch outputs
+    vswitch_outputs = ''
+    for idx, subnet in enumerate(data['subnets'], 1):
+        vswitch_outputs += f'\noutput "vswitch{idx}_id" {{\n'
+        vswitch_outputs += f'  description = "ID of vSwitch {idx}"\n'
+        vswitch_outputs += f'  value       = alicloud_vswitch.vswitch{idx}.id\n'
+        vswitch_outputs += '}\n'
+
+        vswitch_outputs += f'\noutput "vswitch{idx}_name" {{\n'
+        vswitch_outputs += f'  description = "Name of vSwitch {idx}"\n'
+        vswitch_outputs += f'  value       = alicloud_vswitch.vswitch{idx}.vswitch_name\n'
+        vswitch_outputs += '}\n'
+
+        vswitch_outputs += f'\noutput "vswitch{idx}_zone" {{\n'
+        vswitch_outputs += f'  description = "Zone of vSwitch {idx}"\n'
+        vswitch_outputs += f'  value       = alicloud_vswitch.vswitch{idx}.zone_id\n'
+        vswitch_outputs += '}\n'
+
+    # Replace placeholders
+    content = content.replace('{{vpcCidr}}', vpc_cidr)
+    content = content.replace('{{vSwitchVariables}}', vswitch_variables)
+    content = content.replace('{{vSwitchResources}}', vswitch_resources)
+    content = content.replace('{{vSwitchOutputs}}', vswitch_outputs)
+
+    return content
+
+
 def process_template(provider: str, output_format: str, data: Dict[str, Any], templates_dir: str) -> str:
     """
     Process a template for a given provider and output format.
@@ -1232,5 +1343,11 @@ def process_template(provider: str, output_format: str, data: Dict[str, Any], te
             return process_oracle_oci_template(template_content, data)
         elif output_format == 'terraform':
             return process_oracle_terraform_template(template_content, data)
+
+    elif provider == 'alicloud':
+        if output_format == 'aliyun':
+            return process_alicloud_aliyun_template(template_content, data)
+        elif output_format == 'terraform':
+            return process_alicloud_terraform_template(template_content, data)
 
     raise NotImplementedError(f"Template processor not implemented for {provider}/{output_format}")
