@@ -18,8 +18,7 @@ VPC_ID=$(aliyun vpc CreateVpc \
   --CidrBlock "${VPC_CIDR}" \
   --VpcName "${VPC_NAME}" \
   --Description "VPC created by IP Calculator" \
-  --output cols=VpcId rows=VpcId \
-  | tail -n 1 | tr -d ' ')
+  2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('VpcId',''))")
 
 echo "VPC created with ID: ${VPC_ID}"
 echo "Waiting for VPC to be available..."
