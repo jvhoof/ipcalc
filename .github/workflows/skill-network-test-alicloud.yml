@@ -158,7 +158,7 @@ jobs:
           VPC_EXISTS=$(aliyun vpc DescribeVpcs \
             --RegionId "${{ env.ALICLOUD_REGION }}" \
             --VpcName "${{ env.VPC_NAME }}" \
-            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | tail -n 1 | tr -d ' ' || echo "")
+            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | grep -E '^vpc-' | head -1 | tr -d ' ' || echo "")
 
           if [ -z "$VPC_EXISTS" ]; then
             echo "VPC not found!"
@@ -169,7 +169,7 @@ jobs:
           VSWITCH_COUNT=$(aliyun vpc DescribeVSwitches \
             --RegionId "${{ env.ALICLOUD_REGION }}" \
             --VpcId "${{ env.VPC_ID }}" \
-            --output cols=VSwitchId rows=VSwitches.VSwitch[] 2>/dev/null | tail -n +2 | grep -c . || echo "0")
+            --output cols=VSwitchId rows=VSwitches.VSwitch[] 2>/dev/null | grep -E '^vsw-' | grep -c . || echo "0")
 
           echo "Found $VSWITCH_COUNT vSwitch(es)"
 
@@ -342,7 +342,7 @@ jobs:
           VPC_ID=$(aliyun vpc DescribeVpcs \
             --RegionId "${{ env.ALICLOUD_REGION }}" \
             --VpcName "${{ env.VPC_NAME }}" \
-            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | tail -n 1 | tr -d ' ')
+            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | grep -E '^vpc-' | head -1 | tr -d ' ')
 
           echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
           echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
@@ -358,7 +358,7 @@ jobs:
           VPC_EXISTS=$(aliyun vpc DescribeVpcs \
             --RegionId "${{ env.ALICLOUD_REGION }}" \
             --VpcName "${{ env.VPC_NAME }}" \
-            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | tail -n 1 | tr -d ' ' || echo "")
+            --output cols=VpcId rows=Vpcs.Vpc[] 2>/dev/null | grep -E '^vpc-' | head -1 | tr -d ' ' || echo "")
 
           if [ -z "$VPC_EXISTS" ]; then
             echo "VPC not found!"
@@ -370,7 +370,7 @@ jobs:
           VPC_CIDR_BLOCK=$(aliyun vpc DescribeVpcs \
             --RegionId "${{ env.ALICLOUD_REGION }}" \
             --VpcName "${{ env.VPC_NAME }}" \
-            --output cols=CidrBlock rows=Vpcs.Vpc[] 2>/dev/null | tail -n 1 | tr -d ' ' || echo "")
+            --output cols=CidrBlock rows=Vpcs.Vpc[] 2>/dev/null | grep -E '^[0-9]' | head -1 | tr -d ' ' || echo "")
 
           if [ "$VPC_CIDR_BLOCK" != "${{ env.VPC_CIDR }}" ]; then
             echo "VPC CIDR mismatch! Expected: ${{ env.VPC_CIDR }}, Got: $VPC_CIDR_BLOCK"
@@ -381,7 +381,7 @@ jobs:
           VSWITCH_COUNT=$(aliyun vpc DescribeVSwitches \
             --RegionId "${{ env.ALICLOUD_REGION }}" \
             --VpcId "${{ env.VPC_ID }}" \
-            --output cols=VSwitchId rows=VSwitches.VSwitch[] 2>/dev/null | tail -n +2 | grep -c . || echo "0")
+            --output cols=VSwitchId rows=VSwitches.VSwitch[] 2>/dev/null | grep -E '^vsw-' | grep -c . || echo "0")
 
           echo "Found $VSWITCH_COUNT vSwitch(es)"
 
