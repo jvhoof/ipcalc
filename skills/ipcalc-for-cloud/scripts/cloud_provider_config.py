@@ -61,8 +61,7 @@ CLOUD_PROVIDERS: Dict[str, CloudProviderConfig] = {
         'max_cidr_prefix': 8,
         'min_cidr_prefix': 29,
         'availability_zones': [
-            'cn-hangzhou-a', 'cn-hangzhou-b', 'cn-hangzhou-c',
-            'cn-hangzhou-d', 'cn-hangzhou-e', 'cn-hangzhou-f'
+            'cn-hangzhou-h', 'cn-hangzhou-i', 'cn-hangzhou-j', 'cn-hangzhou-k'
         ],
         'supported_outputs': ['info', 'json', 'aliyun', 'terraform']
     },

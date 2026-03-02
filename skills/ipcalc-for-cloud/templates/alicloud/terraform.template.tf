@@ -62,31 +62,6 @@ resource "alicloud_vpc" "vpc" {
 
 {{vSwitchResources}}
 # ========================================
-# Security Group (Example)
-# ========================================
-
-resource "alicloud_security_group" "sg" {
-  security_group_name = "${var.vpc_name}-sg"
-  description         = "Security group for ${var.vpc_name}"
-  vpc_id      = alicloud_vpc.vpc.id
-
-  tags = {
-    Environment = "Production"
-    ManagedBy   = "Terraform"
-  }
-}
-
-# Allow internal communication
-resource "alicloud_security_group_rule" "allow_internal" {
-  type              = "ingress"
-  ip_protocol       = "all"
-  policy            = "accept"
-  port_range        = "-1/-1"
-  security_group_id = alicloud_security_group.sg.id
-  cidr_ip           = var.vpc_cidr
-}
-
-# ========================================
 # Outputs
 # ========================================
 
@@ -103,11 +78,6 @@ output "vpc_name" {
 output "vpc_cidr" {
   description = "CIDR block of the VPC"
   value       = alicloud_vpc.vpc.cidr_block
-}
-
-output "security_group_id" {
-  description = "ID of the Security Group"
-  value       = alicloud_security_group.sg.id
 }
 
 {{vSwitchOutputs}}

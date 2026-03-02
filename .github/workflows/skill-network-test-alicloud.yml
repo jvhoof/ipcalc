@@ -142,6 +142,8 @@ jobs:
       - name: Configure Aliyun CLI
         run: |
           aliyun configure set \
+            --profile default \
+            --mode StsToken \
             --access-key-id "$ALIBABACLOUD_ACCESS_KEY_ID" \
             --access-key-secret "$ALIBABACLOUD_ACCESS_KEY_SECRET" \
             --sts-token "$ALIBABACLOUD_SECURITY_TOKEN" \
@@ -317,6 +319,8 @@ jobs:
       - name: Configure Aliyun CLI
         run: |
           aliyun configure set \
+            --profile default \
+            --mode StsToken \
             --access-key-id "$ALIBABACLOUD_ACCESS_KEY_ID" \
             --access-key-secret "$ALIBABACLOUD_ACCESS_KEY_SECRET" \
             --sts-token "$ALIBABACLOUD_SECURITY_TOKEN" \
