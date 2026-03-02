@@ -10,7 +10,7 @@ on:
       region:
         description: 'Alibaba Cloud region'
         required: false
-        default: 'cn-hangzhou'
+        default: 'eu-central-1'
       vpc_cidr:
         description: 'VPC CIDR block'
         required: false
