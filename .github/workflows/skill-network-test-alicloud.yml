@@ -34,7 +34,7 @@ on:
 
 env:
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.ALICLOUD_RESOURCE_PREFIX || 'ipcalc-test' }}
-  ALICLOUD_REGION: ${{ github.event.inputs.region || vars.ALICLOUD_REGION || 'cn-hangzhou' }}
+  ALICLOUD_REGION: ${{ github.event.inputs.region || vars.ALICLOUD_REGION || 'eu-central-1' }}
   VPC_CIDR: ${{ github.event.inputs.vpc_cidr || vars.ALICLOUD_VPC_CIDR || '172.16.1.0/24' }}
   SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.ALICLOUD_SUBNET_COUNT || '3' }}
 
