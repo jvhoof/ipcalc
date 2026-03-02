@@ -1179,13 +1179,31 @@ def process_alicloud_aliyun_template(template_content: str, data: Dict[str, Any]
     """
     content = template_content
 
-    # Discover available zones dynamically so the script works in any region
+    # Discover available zones dynamically so the script works in any region.
+    # Try VPC DescribeZones first (AvailableZones.AvailableZone), fall back to ECS (Zones.Zone).
+    # python3 JSON parsing is used for reliability instead of --output cols= which is fragile.
     vswitch_creation = '# Discover available zones dynamically\n'
-    vswitch_creation += 'ZONE_LIST=$(aliyun vpc DescribeZones \\\n'
-    vswitch_creation += '  --RegionId "${REGION}" \\\n'
-    vswitch_creation += '  --output cols=ZoneId rows=AvailableZones.AvailableZone[] 2>/dev/null \\\n'
-    vswitch_creation += '  | tail -n +2 | grep -v \'^$\')\n'
-    vswitch_creation += 'readarray -t AZ_ARRAY <<< "$ZONE_LIST"\n'
+    vswitch_creation += "ZONE_LIST=$(aliyun vpc DescribeZones \\\n"
+    vswitch_creation += "  --RegionId \"${REGION}\" 2>/dev/null | python3 -c '\n"
+    vswitch_creation += "import json,sys\n"
+    vswitch_creation += "try:\n"
+    vswitch_creation += "  d=json.load(sys.stdin)\n"
+    vswitch_creation += "  zones=d.get(\"AvailableZones\",{}).get(\"AvailableZone\",[])\n"
+    vswitch_creation += "  print(\"\\n\".join(z[\"ZoneId\"] for z in zones))\n"
+    vswitch_creation += "except: pass\n"
+    vswitch_creation += "' 2>/dev/null)\n"
+    vswitch_creation += 'if [ -z "$ZONE_LIST" ]; then\n'
+    vswitch_creation += "  ZONE_LIST=$(aliyun ecs DescribeZones \\\n"
+    vswitch_creation += "    --RegionId \"${REGION}\" 2>/dev/null | python3 -c '\n"
+    vswitch_creation += "import json,sys\n"
+    vswitch_creation += "try:\n"
+    vswitch_creation += "  d=json.load(sys.stdin)\n"
+    vswitch_creation += "  zones=d.get(\"Zones\",{}).get(\"Zone\",[])\n"
+    vswitch_creation += "  print(\"\\n\".join(z[\"ZoneId\"] for z in zones))\n"
+    vswitch_creation += "except: pass\n"
+    vswitch_creation += "' 2>/dev/null)\n"
+    vswitch_creation += 'fi\n'
+    vswitch_creation += 'mapfile -t AZ_ARRAY < <(echo "$ZONE_LIST" | grep -v \'^$\')\n'
     vswitch_creation += 'AZ_COUNT=${#AZ_ARRAY[@]}\n'
     vswitch_creation += 'if [ "$AZ_COUNT" -eq 0 ]; then\n'
     vswitch_creation += '  echo "Error: No available zones found in region ${REGION}"\n'
@@ -1205,7 +1223,16 @@ def process_alicloud_aliyun_template(template_content: str, data: Dict[str, Any]
         vswitch_creation += f'  --CidrBlock "{subnet["cidr"]}" \\\n'
         vswitch_creation += f'  --VSwitchName "${{VPC_NAME}}-vswitch{idx}" \\\n'
         vswitch_creation += f'  --Description "vSwitch {idx}" \\\n'
-        vswitch_creation += f'  2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get(\'VSwitchId\',\'\'))")\n\n'
+        vswitch_creation += f'  2>/dev/null | python3 -c "\n'
+        vswitch_creation += f'import json,sys\n'
+        vswitch_creation += f'try:\n'
+        vswitch_creation += f'  s=sys.stdin.read(); print(json.loads(s).get(\'VSwitchId\',\'\') if s.strip() else \'\')\n'
+        vswitch_creation += f'except: print(\'\')\n'
+        vswitch_creation += f'")\n\n'
+        vswitch_creation += f'if [ -z "${{VSWITCH{idx}_ID}}" ]; then\n'
+        vswitch_creation += f'  echo "Error: Failed to create vSwitch {idx}"\n'
+        vswitch_creation += f'  exit 1\n'
+        vswitch_creation += f'fi\n'
         vswitch_creation += f'echo "vSwitch {idx} created with ID: ${{VSWITCH{idx}_ID}}"\n'
         vswitch_creation += f'sleep 2\n\n'
 
