@@ -1,0 +1,241 @@
+name: '[Parity] Azure Output Comparison: TypeScript vs Python'
+
+on:
+  workflow_dispatch:
+    inputs:
+      cidr:
+        description: 'Hub VNet CIDR block'
+        required: false
+        default: '10.0.0.0/16'
+      subnets:
+        description: 'Number of hub subnets'
+        required: false
+        default: '4'
+      spoke_cidrs:
+        description: 'Spoke VNet CIDRs (comma-separated)'
+        required: false
+        default: '10.1.0.0/16,10.2.0.0/16'
+      spoke_subnets:
+        description: 'Spoke subnet counts (comma-separated)'
+        required: false
+        default: '2,2'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/templates/azure/**'
+      - 'skills/ipcalc-for-cloud/templates/azure/**'
+      - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
+      - '.github/workflows/parity-test-azure.yml'
+  pull_request:
+    paths:
+      - 'src/templates/azure/**'
+      - 'skills/ipcalc-for-cloud/templates/azure/**'
+      - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
+      - '.github/workflows/parity-test-azure.yml'
+
+env:
+  HUB_CIDR: ${{ github.event.inputs.cidr || '10.0.0.0/16' }}
+  HUB_SUBNETS: ${{ github.event.inputs.subnets || '4' }}
+  SPOKE_CIDRS: ${{ github.event.inputs.spoke_cidrs || '10.1.0.0/16,10.2.0.0/16' }}
+  SPOKE_SUBNETS: ${{ github.event.inputs.spoke_subnets || '2,2' }}
+
+jobs:
+  compare-azure-outputs:
+    name: Compare Azure outputs (TypeScript vs Python)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── TypeScript setup ────────────────────────────────────────────────────
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      # ── Python setup ────────────────────────────────────────────────────────
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install Python dependencies
+        working-directory: skills/ipcalc-for-cloud
+        run: uv sync
+
+      # ── Generate outputs (single VNet, no peering) ──────────────────────────
+
+      - name: Generate TypeScript outputs (single VNet)
+        run: |
+          mkdir -p /tmp/parity/single/ts /tmp/parity/single/py /tmp/parity/single/diff
+
+          for fmt in cli terraform bicep arm powershell; do
+            npm run cli -- \
+              --provider azure \
+              --cidr ${{ env.HUB_CIDR }} \
+              --subnets ${{ env.HUB_SUBNETS }} \
+              --output $fmt \
+              --file /tmp/parity/single/ts/${fmt}
+            echo "Generated TS single/$fmt"
+          done
+
+      - name: Generate Python outputs (single VNet)
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          for fmt in cli terraform bicep arm powershell; do
+            uv run python scripts/ipcalc.py \
+              --provider azure \
+              --cidr ${{ env.HUB_CIDR }} \
+              --subnets ${{ env.HUB_SUBNETS }} \
+              --output $fmt \
+              --file /tmp/parity/single/py/${fmt}
+            echo "Generated PY single/$fmt"
+          done
+
+      # ── Generate outputs (hub-spoke, with peering) ──────────────────────────
+
+      - name: Generate TypeScript outputs (hub-spoke)
+        run: |
+          mkdir -p /tmp/parity/spoke/ts /tmp/parity/spoke/py /tmp/parity/spoke/diff
+
+          for fmt in cli terraform bicep arm powershell; do
+            npm run cli -- \
+              --provider azure \
+              --cidr ${{ env.HUB_CIDR }} \
+              --subnets ${{ env.HUB_SUBNETS }} \
+              --spoke-cidrs "${{ env.SPOKE_CIDRS }}" \
+              --spoke-subnets "${{ env.SPOKE_SUBNETS }}" \
+              --output $fmt \
+              --file /tmp/parity/spoke/ts/${fmt}
+            echo "Generated TS spoke/$fmt"
+          done
+
+      - name: Generate Python outputs (hub-spoke)
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          for fmt in cli terraform bicep arm powershell; do
+            uv run python scripts/ipcalc.py \
+              --provider azure \
+              --cidr ${{ env.HUB_CIDR }} \
+              --subnets ${{ env.HUB_SUBNETS }} \
+              --spoke-cidrs "${{ env.SPOKE_CIDRS }}" \
+              --spoke-subnets "${{ env.SPOKE_SUBNETS }}" \
+              --output $fmt \
+              --file /tmp/parity/spoke/py/${fmt}
+            echo "Generated PY spoke/$fmt"
+          done
+
+      # ── Compare and report ──────────────────────────────────────────────────
+
+      - name: Compare outputs and generate report
+        id: compare
+        run: |
+          PASS=0
+          FAIL=0
+          REPORT_FILE=/tmp/parity-report.md
+
+          echo "## Azure Output Parity Report: TypeScript vs Python" > $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $REPORT_FILE
+          echo "**Hub CIDR:** \`${{ env.HUB_CIDR }}\`  **Subnets:** \`${{ env.HUB_SUBNETS }}\`" >> $REPORT_FILE
+          echo "**Spoke CIDRs:** \`${{ env.SPOKE_CIDRS }}\`  **Spoke Subnets:** \`${{ env.SPOKE_SUBNETS }}\`" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+
+          # ── Single VNet ──
+          echo "### Single VNet (no peering)" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          echo "| Format | Result | Details |" >> $REPORT_FILE
+          echo "|--------|--------|---------|" >> $REPORT_FILE
+
+          for fmt in cli terraform bicep arm powershell; do
+            TS_FILE=/tmp/parity/single/ts/${fmt}
+            PY_FILE=/tmp/parity/single/py/${fmt}
+            DIFF_FILE=/tmp/parity/single/diff/${fmt}.diff
+
+            if diff "$TS_FILE" "$PY_FILE" > "$DIFF_FILE" 2>&1; then
+              echo "| \`$fmt\` | ✅ Identical | No differences |" >> $REPORT_FILE
+              PASS=$((PASS + 1))
+            else
+              LINES=$(wc -l < "$DIFF_FILE")
+              echo "| \`$fmt\` | ❌ Differs | $LINES diff lines — see artifact |" >> $REPORT_FILE
+              FAIL=$((FAIL + 1))
+            fi
+          done
+
+          echo "" >> $REPORT_FILE
+
+          # ── Hub-Spoke ──
+          echo "### Hub-Spoke (with VNet peering)" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          echo "| Format | Result | Details |" >> $REPORT_FILE
+          echo "|--------|--------|---------|" >> $REPORT_FILE
+
+          for fmt in cli terraform bicep arm powershell; do
+            TS_FILE=/tmp/parity/spoke/ts/${fmt}
+            PY_FILE=/tmp/parity/spoke/py/${fmt}
+            DIFF_FILE=/tmp/parity/spoke/diff/${fmt}.diff
+
+            if diff "$TS_FILE" "$PY_FILE" > "$DIFF_FILE" 2>&1; then
+              echo "| \`$fmt\` | ✅ Identical | No differences |" >> $REPORT_FILE
+              PASS=$((PASS + 1))
+            else
+              LINES=$(wc -l < "$DIFF_FILE")
+              echo "| \`$fmt\` | ❌ Differs | $LINES diff lines — see artifact |" >> $REPORT_FILE
+              FAIL=$((FAIL + 1))
+            fi
+          done
+
+          echo "" >> $REPORT_FILE
+          echo "---" >> $REPORT_FILE
+          echo "**Total: $PASS passed, $FAIL failed** (out of $((PASS + FAIL)) comparisons)" >> $REPORT_FILE
+
+          cat $REPORT_FILE
+          cat $REPORT_FILE >> $GITHUB_STEP_SUMMARY
+
+          echo "pass=$PASS" >> $GITHUB_OUTPUT
+          echo "fail=$FAIL" >> $GITHUB_OUTPUT
+
+      - name: Show diffs for failing formats
+        if: steps.compare.outputs.fail != '0'
+        run: |
+          echo "=== Failing diffs ==="
+          for scope in single spoke; do
+            for fmt in cli terraform bicep arm powershell; do
+              DIFF_FILE=/tmp/parity/${scope}/diff/${fmt}.diff
+              if [ -s "$DIFF_FILE" ]; then
+                echo ""
+                echo "── $scope/$fmt ──────────────────────────"
+                cat "$DIFF_FILE"
+              fi
+            done
+          done
+
+      - name: Upload diff artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-parity-diffs
+          path: |
+            /tmp/parity/single/
+            /tmp/parity/spoke/
+          retention-days: 14
+
+      - name: Fail if any format differs
+        if: steps.compare.outputs.fail != '0'
+        run: |
+          echo "❌ ${{ steps.compare.outputs.fail }} format(s) differ between TypeScript and Python outputs."
+          exit 1
