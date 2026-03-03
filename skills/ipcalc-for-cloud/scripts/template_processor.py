@@ -116,8 +116,12 @@ def process_azure_terraform_template(template_content: str, data: Dict[str, Any]
         # Spoke VNET outputs
         for spoke_idx, spoke in enumerate(spoke_vnets, 1):
             spoke_vnet_outputs += f'\noutput "spoke{spoke_idx}_vnet_id" {{\n'
-            spoke_vnet_outputs += f'  description = "ID of Spoke {spoke_idx} VNet"\n'
+            spoke_vnet_outputs += f'  description = "ID of Spoke {spoke_idx} Virtual Network"\n'
             spoke_vnet_outputs += f'  value       = azurerm_virtual_network.spoke{spoke_idx}_vnet.id\n'
+            spoke_vnet_outputs += '}\n'
+            spoke_vnet_outputs += f'\noutput "spoke{spoke_idx}_vnet_name" {{\n'
+            spoke_vnet_outputs += f'  description = "Name of Spoke {spoke_idx} Virtual Network"\n'
+            spoke_vnet_outputs += f'  value       = azurerm_virtual_network.spoke{spoke_idx}_vnet.name\n'
             spoke_vnet_outputs += '}\n'
 
     # Replace placeholders
