@@ -2,7 +2,7 @@
 
 Python IP Calculator implementation aligned with TypeScript CLI.
 
-## Status: Phase 1 Complete (~95%)
+## Status: Phase 1 Complete (100%)
 
 ## What's Done
 
@@ -11,7 +11,7 @@ Python IP Calculator implementation aligned with TypeScript CLI.
 |------|--------|-------|
 | `scripts/ipcalc.py` | ✅ Complete | All providers, hub-spoke, all output formats |
 | `scripts/cloud_provider_config.py` | ✅ Complete | All 6 providers with AZ configs |
-| `scripts/template_processor.py` | ✅ Complete | All 14 processors implemented |
+| `scripts/template_processor.py` | ✅ Complete | All 11 output format processors |
 | `scripts/test_ipcalc.py` | ✅ Complete | 33 tests, all passing |
 
 ### Templates
@@ -28,7 +28,7 @@ Python IP Calculator implementation aligned with TypeScript CLI.
 |----------|-------------|------------|-----------|
 | Azure | 5 | ✅ Zones 1-3 | ✅ |
 | AWS | 5 | ✅ Round-robin | ❌ |
-| GCP | 4 | ✅ Round-robin | ✅ |
+| GCP | 4 | ✅ Round-robin | ✅ Bidirectional peering |
 | Oracle | 3 | ✅ AD-1/2/3 | ❌ |
 | AliCloud | 4 | ✅ Round-robin | ❌ |
 | On-Premises | 2 | ❌ | ❌ |
@@ -46,13 +46,25 @@ Python IP Calculator implementation aligned with TypeScript CLI.
 - `oci` — Oracle ✅
 - `aliyun` — AliCloud ✅
 
+### CI/CD Test Coverage
+| Provider | CLI Workflow | Skill Workflow | `terraform validate` |
+|----------|-------------|----------------|----------------------|
+| Azure | `cli-test-azure-vnet.yml` | `skill-network-test-azure.yml` | ✅ |
+| AWS | `cli-test-aws-vpc.yml` | `skill-network-test-aws.yml` | ✅ |
+| GCP | `cli-test-gcp-vpc.yml` | `skill-network-test-gcp.yml` | ✅ |
+| Oracle | `cli-test-oci-vcn.yml` | `skill-network-test-oci.yml` | ✅ |
+| AliCloud | `cli-test-alicloud-vswitch.yml` | `skill-network-test-alicloud.yml` | ✅ |
+
+All workflows include init → validate → plan → apply → destroy cycles. Unit tests run on every push via `skill-unit-test.yml`.
+
 ## What's Pending
 
 ### TypeScript Output Parity Validation
-Compare Python output with TypeScript CLI for identical inputs (no blockers, just not done):
+Python outputs have not been formally diff'd against TypeScript CLI outputs for identical inputs. No blockers — just not done yet.
+
 ```bash
 # TypeScript
-ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 4 --output terraform > ts_output.tf
+npm run cli -- --provider azure --cidr 10.0.0.0/16 --subnets 4 --output terraform > ts_output.tf
 
 # Python
 python scripts/ipcalc.py --provider azure --cidr 10.0.0.0/16 --subnets 4 --output terraform > py_output.tf
@@ -60,8 +72,7 @@ python scripts/ipcalc.py --provider azure --cidr 10.0.0.0/16 --subnets 4 --outpu
 diff ts_output.tf py_output.tf
 ```
 
-### Terraform Validation for New Providers
-`terraform validate` tested for Azure and AWS. GCP, Oracle, AliCloud not yet validated.
+Providers to validate: Azure, AWS, GCP, Oracle, AliCloud (all output formats per provider).
 
 ## Architecture
 
@@ -76,8 +87,8 @@ Hub-Spoke (Azure/GCP only):
   Hub: 10.0.0.0/16
   ├── subnet1: 10.0.0.0/17
   └── subnet2: 10.0.128.0/17
-  Spoke 1: 10.1.0.0/16 (peered)
-  Spoke 2: 10.2.0.0/16 (peered)
+  Spoke 1: 10.1.0.0/16 (bidirectional peering)
+  Spoke 2: 10.2.0.0/16 (bidirectional peering)
 ```
 
 ## CLI
