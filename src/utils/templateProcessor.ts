@@ -906,7 +906,6 @@ export function processGCPGcloudTemplate(templateContent: string, data: Template
       // Add spoke VPC creation
       spokeVPCCreation += `\necho "Creating Spoke VPC ${spokeNum}..."\n`
       spokeVPCCreation += `gcloud compute networks create "\${SPOKE${spokeNum}_VPC_NAME}" \\\n`
-      spokeVPCCreation += `  --project="\${PROJECT_ID}" \\\n`
       spokeVPCCreation += `  --subnet-mode=custom \\\n`
       spokeVPCCreation += `  --bgp-routing-mode=regional\n\n`
 
@@ -926,6 +925,7 @@ export function processGCPGcloudTemplate(templateContent: string, data: Template
       spokePeeringCreation += `\necho "Creating peering from Hub to Spoke ${spokeNum}..."\n`
       spokePeeringCreation += `gcloud compute networks peerings create "hub-to-spoke${spokeNum}" \\\n`
       spokePeeringCreation += `  --network="\${VPC_NAME}" \\\n`
+      spokePeeringCreation += `  --peer-project="$(gcloud config get-value project)" \\\n`
       spokePeeringCreation += `  --peer-network="\${SPOKE${spokeNum}_VPC_NAME}" \\\n`
       spokePeeringCreation += `  --auto-create-routes\n\n`
 
@@ -933,6 +933,7 @@ export function processGCPGcloudTemplate(templateContent: string, data: Template
       spokePeeringCreation += `echo "Creating peering from Spoke ${spokeNum} to Hub..."\n`
       spokePeeringCreation += `gcloud compute networks peerings create "spoke${spokeNum}-to-hub" \\\n`
       spokePeeringCreation += `  --network="\${SPOKE${spokeNum}_VPC_NAME}" \\\n`
+      spokePeeringCreation += `  --peer-project="$(gcloud config get-value project)" \\\n`
       spokePeeringCreation += `  --peer-network="\${VPC_NAME}" \\\n`
       spokePeeringCreation += `  --auto-create-routes\n\n`
     })
@@ -972,7 +973,7 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
   // Generate subnet resources
   let subnetResources = ''
   data.subnets.forEach((subnet, index) => {
-    subnetResources += `resource "google_compute_subnetwork" "subnet${index + 1}" {\n`
+    subnetResources += `\nresource "google_compute_subnetwork" "subnet${index + 1}" {\n`
     subnetResources += `  name          = "\${var.vpc_name}-subnet${index + 1}"\n`
     subnetResources += `  ip_cidr_range = var.subnet${index + 1}_cidr\n`
     subnetResources += `  region        = var.subnet${index + 1}_region\n`
@@ -984,7 +985,7 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
     subnetResources += `    flow_sampling        = 0.5\n`
     subnetResources += `    metadata             = "INCLUDE_ALL_METADATA"\n`
     subnetResources += `  }\n`
-    subnetResources += `}\n\n`
+    subnetResources += `}\n`
   })
 
   // Generate subnet outputs
@@ -1027,8 +1028,9 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
       spokeVPCResources += `\nresource "google_compute_network" "spoke${spokeNum}_vpc" {\n`
       spokeVPCResources += `  name                    = "\${var.vpc_name}-spoke${spokeNum}"\n`
       spokeVPCResources += `  auto_create_subnetworks = false\n`
-      spokeVPCResources += `  project                 = var.project_id\n`
       spokeVPCResources += `  routing_mode            = "REGIONAL"\n`
+      spokeVPCResources += `  project                 = var.project_id\n\n`
+      spokeVPCResources += `  description = "Spoke VPC ${spokeNum}"\n`
       spokeVPCResources += `}\n`
 
       // Add spoke subnets
@@ -1070,24 +1072,26 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
       spokePeeringResources += `\nresource "google_compute_network_peering" "hub_to_spoke${spokeNum}" {\n`
       spokePeeringResources += `  name         = "hub-to-spoke${spokeNum}"\n`
       spokePeeringResources += `  network      = google_compute_network.vpc.self_link\n`
-      spokePeeringResources += `  peer_network = google_compute_network.spoke${spokeNum}_vpc.self_link\n`
+      spokePeeringResources += `  peer_network = google_compute_network.spoke${spokeNum}_vpc.self_link\n\n`
+      spokePeeringResources += `  auto_create_routes = true\n`
       spokePeeringResources += `}\n`
 
       // Spoke to Hub peering
       spokePeeringResources += `\nresource "google_compute_network_peering" "spoke${spokeNum}_to_hub" {\n`
       spokePeeringResources += `  name         = "spoke${spokeNum}-to-hub"\n`
       spokePeeringResources += `  network      = google_compute_network.spoke${spokeNum}_vpc.self_link\n`
-      spokePeeringResources += `  peer_network = google_compute_network.vpc.self_link\n`
+      spokePeeringResources += `  peer_network = google_compute_network.vpc.self_link\n\n`
+      spokePeeringResources += `  auto_create_routes = true\n`
       spokePeeringResources += `}\n`
 
       // Add spoke VPC outputs
       spokeOutputs += `\noutput "spoke${spokeNum}_vpc_name" {\n`
-      spokeOutputs += `  description = "Name of Spoke VPC ${spokeNum}"\n`
+      spokeOutputs += `  description = "Name of Spoke ${spokeNum} VPC"\n`
       spokeOutputs += `  value       = google_compute_network.spoke${spokeNum}_vpc.name\n`
       spokeOutputs += `}\n`
 
       spokeOutputs += `\noutput "spoke${spokeNum}_vpc_id" {\n`
-      spokeOutputs += `  description = "ID of Spoke VPC ${spokeNum}"\n`
+      spokeOutputs += `  description = "ID of Spoke ${spokeNum} VPC"\n`
       spokeOutputs += `  value       = google_compute_network.spoke${spokeNum}_vpc.id\n`
       spokeOutputs += `}\n`
     })
