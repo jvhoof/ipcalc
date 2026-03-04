@@ -781,7 +781,7 @@ export function processAWSTerraformTemplate(templateContent: string, data: Templ
     subnetResources += `  cidr_block        = var.subnet${index + 1}_cidr\n`
     subnetResources += `  availability_zone = data.aws_availability_zones.available.names[${index} % length(data.aws_availability_zones.available.names)]\n\n`
     subnetResources += `  tags = {\n`
-    subnetResources += `    Name        = "\${lookup(aws_vpc.vpc.tags, "Name")}-subnet${index + 1}"\n`
+    subnetResources += `    Name        = "\${var.prefix}-subnet${index + 1}"\n`
     subnetResources += `    Environment = "Production"\n`
     subnetResources += `    ManagedBy   = "Terraform"\n`
     subnetResources += `  }\n`
@@ -794,6 +794,10 @@ export function processAWSTerraformTemplate(templateContent: string, data: Templ
     subnetOutputs += `\noutput "subnet${index + 1}_id" {\n`
     subnetOutputs += `  description = "ID of Subnet ${index + 1}"\n`
     subnetOutputs += `  value       = aws_subnet.subnet${index + 1}.id\n`
+    subnetOutputs += `}\n`
+    subnetOutputs += `\noutput "subnet${index + 1}_az" {\n`
+    subnetOutputs += `  description = "Availability Zone of Subnet ${index + 1}"\n`
+    subnetOutputs += `  value       = aws_subnet.subnet${index + 1}.availability_zone\n`
     subnetOutputs += `}\n`
   })
 
@@ -817,7 +821,7 @@ export function processAWSCloudFormationTemplate(templateContent: string, data: 
   data.subnets.forEach((subnet, index) => {
     subnetParameters += `\n  Subnet${index + 1}Cidr:\n`
     subnetParameters += `    Type: String\n`
-    subnetParameters += `    Default: ${subnet.cidr}\n`
+    subnetParameters += `    Default: '${subnet.cidr}'\n`
     subnetParameters += `    Description: CIDR block for Subnet ${index + 1}\n`
   })
 
@@ -827,10 +831,7 @@ export function processAWSCloudFormationTemplate(templateContent: string, data: 
     const azSelectors = [
       '!Select [0, !GetAZs ""]',
       '!Select [1, !GetAZs ""]',
-      '!Select [2, !GetAZs ""]',
-      '!Select [3, !GetAZs ""]',
-      '!Select [4, !GetAZs ""]',
-      '!Select [5, !GetAZs ""]'
+      '!Select [2, !GetAZs ""]'
     ]
     const azSelector = azSelectors[index % azSelectors.length]
 

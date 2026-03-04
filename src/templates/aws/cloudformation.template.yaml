@@ -16,7 +16,7 @@ Parameters:
 
   VpcCidr:
     Type: String
-    Default: {{vpcCidr}}
+    Default: '{{vpcCidr}}'
     Description: CIDR block for the VPC
 
 {{subnetParameters}}
