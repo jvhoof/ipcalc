@@ -1069,16 +1069,14 @@ def process_gcp_terraform_template(template_content: str, data: Dict[str, Any]) 
             spoke_peering_resources += f'\nresource "google_compute_network_peering" "hub_to_spoke{spoke_idx}" {{\n'
             spoke_peering_resources += f'  name         = "hub-to-spoke{spoke_idx}"\n'
             spoke_peering_resources += f'  network      = google_compute_network.vpc.self_link\n'
-            spoke_peering_resources += f'  peer_network = google_compute_network.spoke{spoke_idx}_vpc.self_link\n\n'
-            spoke_peering_resources += f'  auto_create_routes = true\n'
+            spoke_peering_resources += f'  peer_network = google_compute_network.spoke{spoke_idx}_vpc.self_link\n'
             spoke_peering_resources += f'}}\n'
 
             # Add peering from spoke to hub
             spoke_peering_resources += f'\nresource "google_compute_network_peering" "spoke{spoke_idx}_to_hub" {{\n'
             spoke_peering_resources += f'  name         = "spoke{spoke_idx}-to-hub"\n'
             spoke_peering_resources += f'  network      = google_compute_network.spoke{spoke_idx}_vpc.self_link\n'
-            spoke_peering_resources += f'  peer_network = google_compute_network.vpc.self_link\n\n'
-            spoke_peering_resources += f'  auto_create_routes = true\n'
+            spoke_peering_resources += f'  peer_network = google_compute_network.vpc.self_link\n'
             spoke_peering_resources += f'}}\n'
 
             # Add spoke outputs

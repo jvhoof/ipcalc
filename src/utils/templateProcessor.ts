@@ -1072,16 +1072,14 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
       spokePeeringResources += `\nresource "google_compute_network_peering" "hub_to_spoke${spokeNum}" {\n`
       spokePeeringResources += `  name         = "hub-to-spoke${spokeNum}"\n`
       spokePeeringResources += `  network      = google_compute_network.vpc.self_link\n`
-      spokePeeringResources += `  peer_network = google_compute_network.spoke${spokeNum}_vpc.self_link\n\n`
-      spokePeeringResources += `  auto_create_routes = true\n`
+      spokePeeringResources += `  peer_network = google_compute_network.spoke${spokeNum}_vpc.self_link\n`
       spokePeeringResources += `}\n`
 
       // Spoke to Hub peering
       spokePeeringResources += `\nresource "google_compute_network_peering" "spoke${spokeNum}_to_hub" {\n`
       spokePeeringResources += `  name         = "spoke${spokeNum}-to-hub"\n`
       spokePeeringResources += `  network      = google_compute_network.spoke${spokeNum}_vpc.self_link\n`
-      spokePeeringResources += `  peer_network = google_compute_network.vpc.self_link\n\n`
-      spokePeeringResources += `  auto_create_routes = true\n`
+      spokePeeringResources += `  peer_network = google_compute_network.vpc.self_link\n`
       spokePeeringResources += `}\n`
 
       // Add spoke VPC outputs
