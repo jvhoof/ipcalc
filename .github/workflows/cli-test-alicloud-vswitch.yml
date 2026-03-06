@@ -301,6 +301,8 @@ jobs:
   # ============================================================
   deploy-with-aliyun-cli:
     name: Deploy and Test with Aliyun CLI
+    needs: deploy-with-terraform
+    if: always()
     runs-on: ubuntu-latest
 
     permissions:
