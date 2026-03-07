@@ -1250,7 +1250,9 @@ export function processAliCloudAliyunTemplate(templateContent: string, data: Tem
 
   // Replace placeholders
   content = content.replace('{{vpcCidr}}', data.vnetCidr)
-  content = content.replace('{{vSwitchCreation}}', vSwitchCreation)
+  // Use function replacement to prevent $' and other special patterns from being
+  // interpreted by String.replace() (e.g. grep -v '^$' contains $' which inserts post-match text)
+  content = content.replace('{{vSwitchCreation}}', () => vSwitchCreation)
 
   return content
 }
