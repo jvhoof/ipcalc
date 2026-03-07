@@ -1181,60 +1181,20 @@ def process_alicloud_aliyun_template(template_content: str, data: Dict[str, Any]
     """
     content = template_content
 
-    # Discover available zones dynamically so the script works in any region.
-    # Try VPC DescribeZones first (AvailableZones.AvailableZone), fall back to ECS (Zones.Zone).
-    # python3 JSON parsing is used for reliability instead of --output cols= which is fragile.
-    vswitch_creation = '# Discover available zones dynamically\n'
-    vswitch_creation += "ZONE_LIST=$(aliyun vpc DescribeZones \\\n"
-    vswitch_creation += "  --RegionId \"${REGION}\" 2>/dev/null | python3 -c '\n"
-    vswitch_creation += "import json,sys\n"
-    vswitch_creation += "try:\n"
-    vswitch_creation += "  d=json.load(sys.stdin)\n"
-    vswitch_creation += "  zones=d.get(\"AvailableZones\",{}).get(\"AvailableZone\",[])\n"
-    vswitch_creation += "  print(\"\\n\".join(z[\"ZoneId\"] for z in zones))\n"
-    vswitch_creation += "except: pass\n"
-    vswitch_creation += "' 2>/dev/null)\n"
-    vswitch_creation += 'if [ -z "$ZONE_LIST" ]; then\n'
-    vswitch_creation += "  ZONE_LIST=$(aliyun ecs DescribeZones \\\n"
-    vswitch_creation += "    --RegionId \"${REGION}\" 2>/dev/null | python3 -c '\n"
-    vswitch_creation += "import json,sys\n"
-    vswitch_creation += "try:\n"
-    vswitch_creation += "  d=json.load(sys.stdin)\n"
-    vswitch_creation += "  zones=d.get(\"Zones\",{}).get(\"Zone\",[])\n"
-    vswitch_creation += "  print(\"\\n\".join(z[\"ZoneId\"] for z in zones))\n"
-    vswitch_creation += "except: pass\n"
-    vswitch_creation += "' 2>/dev/null)\n"
-    vswitch_creation += 'fi\n'
-    vswitch_creation += 'mapfile -t AZ_ARRAY < <(echo "$ZONE_LIST" | grep -v \'^$\')\n'
-    vswitch_creation += 'AZ_COUNT=${#AZ_ARRAY[@]}\n'
-    vswitch_creation += 'if [ "$AZ_COUNT" -eq 0 ]; then\n'
-    vswitch_creation += '  echo "Error: No available zones found in region ${REGION}"\n'
-    vswitch_creation += '  exit 1\n'
-    vswitch_creation += 'fi\n'
-    vswitch_creation += 'echo "Available zones (${AZ_COUNT}): ${AZ_ARRAY[*]}"\n\n'
-
-    # Generate vSwitch creation commands using dynamic zone selection
+    # Generate vSwitch creation commands using pre-calculated zones (matches TypeScript)
+    vswitch_creation = ''
     for idx, subnet in enumerate(data['subnets'], 1):
-        az_index = idx - 1
-        vswitch_creation += f'ZONE="${{AZ_ARRAY[$(( {az_index} % AZ_COUNT ))]}}"  # round-robin zone selection\n'
-        vswitch_creation += f'echo "Creating vSwitch {idx} in ${{ZONE}}..."\n'
+        zone = subnet.get('availabilityZone', subnet.get('zone', 'cn-hangzhou-a'))
+        vswitch_creation += f'echo "Creating vSwitch {idx} in {zone}..."\n'
         vswitch_creation += f'VSWITCH{idx}_ID=$(aliyun vpc CreateVSwitch \\\n'
         vswitch_creation += f'  --RegionId "${{REGION}}" \\\n'
         vswitch_creation += f'  --VpcId "${{VPC_ID}}" \\\n'
-        vswitch_creation += f'  --ZoneId "${{ZONE}}" \\\n'
+        vswitch_creation += f'  --ZoneId "{zone}" \\\n'
         vswitch_creation += f'  --CidrBlock "{subnet["cidr"]}" \\\n'
         vswitch_creation += f'  --VSwitchName "${{VPC_NAME}}-vswitch{idx}" \\\n'
-        vswitch_creation += f'  --Description "vSwitch {idx}" \\\n'
-        vswitch_creation += f'  2>/dev/null | python3 -c "\n'
-        vswitch_creation += f'import json,sys\n'
-        vswitch_creation += f'try:\n'
-        vswitch_creation += f'  s=sys.stdin.read(); print(json.loads(s).get(\'VSwitchId\',\'\') if s.strip() else \'\')\n'
-        vswitch_creation += f'except: print(\'\')\n'
-        vswitch_creation += f'")\n\n'
-        vswitch_creation += f'if [ -z "${{VSWITCH{idx}_ID}}" ]; then\n'
-        vswitch_creation += f'  echo "Error: Failed to create vSwitch {idx}"\n'
-        vswitch_creation += f'  exit 1\n'
-        vswitch_creation += f'fi\n'
+        vswitch_creation += f'  --Description "vSwitch {idx} for {zone}" \\\n'
+        vswitch_creation += f'  --output cols=VSwitchId rows=VSwitchId \\\n'
+        vswitch_creation += f"  | tail -n 1 | tr -d ' ')\n\n"
         vswitch_creation += f'echo "vSwitch {idx} created with ID: ${{VSWITCH{idx}_ID}}"\n'
         vswitch_creation += f'sleep 2\n\n'
 
@@ -1261,29 +1221,31 @@ def process_alicloud_terraform_template(template_content: str, data: Dict[str, A
 
     vpc_cidr = data.get('vpcCidr', data.get('vnetCidr', ''))
 
-    # Data source for dynamic zone lookup (works across all regions)
-    vswitch_variables = '\ndata "alicloud_zones" "available" {\n'
-    vswitch_variables += '  available_resource_creation = "VSwitch"\n'
-    vswitch_variables += '}\n'
-
-    # Generate vSwitch CIDR variables only (zones resolved dynamically at apply time)
+    # Generate vSwitch variables (both CIDR and zone, matches TypeScript)
+    vswitch_variables = ''
     for idx, subnet in enumerate(data['subnets'], 1):
+        zone = subnet.get('availabilityZone', subnet.get('zone', 'cn-hangzhou-a'))
         vswitch_variables += f'\nvariable "vswitch{idx}_cidr" {{\n'
         vswitch_variables += f'  description = "CIDR block for vSwitch {idx}"\n'
         vswitch_variables += f'  type        = string\n'
         vswitch_variables += f'  default     = "{subnet["cidr"]}"\n'
         vswitch_variables += '}\n'
 
-    # Generate vSwitch resources using dynamic zone lookup
+        vswitch_variables += f'\nvariable "vswitch{idx}_zone" {{\n'
+        vswitch_variables += f'  description = "Availability Zone for vSwitch {idx}"\n'
+        vswitch_variables += f'  type        = string\n'
+        vswitch_variables += f'  default     = "{zone}"\n'
+        vswitch_variables += '}\n'
+
+    # Generate vSwitch resources using static zone variables (matches TypeScript)
     vswitch_resources = ''
     for idx, subnet in enumerate(data['subnets'], 1):
-        az_index = idx - 1
         vswitch_resources += f'resource "alicloud_vswitch" "vswitch{idx}" {{\n'
         vswitch_resources += f'  vpc_id       = alicloud_vpc.vpc.id\n'
         vswitch_resources += f'  cidr_block   = var.vswitch{idx}_cidr\n'
-        vswitch_resources += f'  zone_id      = data.alicloud_zones.available.zones[{az_index} % length(data.alicloud_zones.available.zones)].id\n'
+        vswitch_resources += f'  zone_id      = var.vswitch{idx}_zone\n'
         vswitch_resources += f'  vswitch_name = "${{var.vpc_name}}-vswitch{idx}"\n'
-        vswitch_resources += f'  description  = "vSwitch {idx}"\n\n'
+        vswitch_resources += f'  description  = "vSwitch {idx} in ${{var.vswitch{idx}_zone}}"\n\n'
         vswitch_resources += f'  tags = {{\n'
         vswitch_resources += f'    Environment = "Production"\n'
         vswitch_resources += f'    ManagedBy   = "Terraform"\n'
