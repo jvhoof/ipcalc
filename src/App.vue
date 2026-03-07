@@ -82,12 +82,11 @@
         </v-list>
       </v-menu>
 
-      <!-- Dark mode toggle menu (always visible) -->
+      <!-- Options menu (always visible) -->
       <v-menu location="top">
         <template v-slot:activator="{ props }">
           <v-btn v-bind="props" class="nav-btn" :style="{ color: navBarTextColor }">
-            <v-icon :style="{ color: navBarTextColor }">mdi-dots-vertical</v-icon>
-            <span class="d-none d-sm-inline">Settings</span>
+            <v-icon :style="{ color: navBarTextColor }">mdi-dots-horizontal</v-icon>
           </v-btn>
         </template>
         <v-list>
@@ -97,9 +96,17 @@
             </template>
             <v-list-item-title>{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</v-list-item-title>
           </v-list-item>
+          <v-list-item @click="aboutDialog?.open()">
+            <template v-slot:prepend>
+              <v-icon>mdi-information-outline</v-icon>
+            </template>
+            <v-list-item-title>About</v-list-item-title>
+          </v-list-item>
         </v-list>
       </v-menu>
     </v-bottom-navigation>
+
+    <AboutDialog ref="aboutDialog" />
   </v-app>
 </template>
 
@@ -111,6 +118,7 @@ import AwsCalculator from './components/AwsCalculator.vue'
 import GcpCalculator from './components/GcpCalculator.vue'
 import OracleCalculator from './components/OracleCalculator.vue'
 import AlicloudCalculator from './components/AlicloudCalculator.vue'
+import AboutDialog from './components/AboutDialog.vue'
 import {
   getBackgroundColor,
   getTitleColor,
@@ -120,6 +128,8 @@ import {
 
 // Default active tab - change this to set the default cloud provider
 const activeTab = ref<string>('on-premises')
+
+const aboutDialog = ref<InstanceType<typeof AboutDialog> | null>(null)
 
 // Dark mode state - will be set based on system preference
 const isDarkMode = ref<boolean>(false)
