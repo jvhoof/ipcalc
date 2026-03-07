@@ -1210,19 +1210,40 @@ export function processOracleTerraformTemplate(templateContent: string, data: Te
 export function processAliCloudAliyunTemplate(templateContent: string, data: TemplateData): string {
   let content = templateContent
 
-  // Generate vSwitch creation commands
-  let vSwitchCreation = ''
+  // Discover available zones dynamically so the script works in any region.
+  // Try VPC DescribeZones first, fall back to ECS DescribeZones.
+  let vSwitchCreation = '# Discover available zones dynamically\n'
+  vSwitchCreation += `ZONE_LIST=$(aliyun vpc DescribeZones \\\n`
+  vSwitchCreation += `  --RegionId "\${REGION}" 2>/dev/null | python3 -c '\nimport json,sys\ntry:\n  d=json.load(sys.stdin)\n  zones=d.get("AvailableZones",{}).get("AvailableZone",[])\n  print("\\n".join(z["ZoneId"] for z in zones))\nexcept: pass\n' 2>/dev/null)\n`
+  vSwitchCreation += `if [ -z "\$ZONE_LIST" ]; then\n`
+  vSwitchCreation += `  ZONE_LIST=$(aliyun ecs DescribeZones \\\n`
+  vSwitchCreation += `    --RegionId "\${REGION}" 2>/dev/null | python3 -c '\nimport json,sys\ntry:\n  d=json.load(sys.stdin)\n  zones=d.get("Zones",{}).get("Zone",[])\n  print("\\n".join(z["ZoneId"] for z in zones))\nexcept: pass\n' 2>/dev/null)\n`
+  vSwitchCreation += `fi\n`
+  vSwitchCreation += `mapfile -t AZ_ARRAY < <(echo "\$ZONE_LIST" | grep -v '^$')\n`
+  vSwitchCreation += `AZ_COUNT=\${#AZ_ARRAY[@]}\n`
+  vSwitchCreation += `if [ "\$AZ_COUNT" -eq 0 ]; then\n`
+  vSwitchCreation += `  echo "Error: No available zones found in region \${REGION}"\n`
+  vSwitchCreation += `  exit 1\n`
+  vSwitchCreation += `fi\n`
+  vSwitchCreation += `echo "Available zones (\${AZ_COUNT}): \${AZ_ARRAY[*]}"\n\n`
+
+  // Generate vSwitch creation commands using dynamic zone selection
   data.subnets.forEach((subnet, index) => {
-    vSwitchCreation += `echo "Creating vSwitch ${index + 1} in ${subnet.zone || 'cn-hangzhou-a'}..."\n`
+    const azIndex = index
+    vSwitchCreation += `ZONE="\${AZ_ARRAY[$(( ${azIndex} % AZ_COUNT ))]}"  # round-robin zone selection\n`
+    vSwitchCreation += `echo "Creating vSwitch ${index + 1} in \${ZONE}..."\n`
     vSwitchCreation += `VSWITCH${index + 1}_ID=$(aliyun vpc CreateVSwitch \\\n`
     vSwitchCreation += `  --RegionId "\${REGION}" \\\n`
     vSwitchCreation += `  --VpcId "\${VPC_ID}" \\\n`
-    vSwitchCreation += `  --ZoneId "${subnet.zone || 'cn-hangzhou-a'}" \\\n`
+    vSwitchCreation += `  --ZoneId "\${ZONE}" \\\n`
     vSwitchCreation += `  --CidrBlock "${subnet.cidr}" \\\n`
     vSwitchCreation += `  --VSwitchName "\${VPC_NAME}-vswitch${index + 1}" \\\n`
-    vSwitchCreation += `  --Description "vSwitch ${index + 1} for ${subnet.zone || 'cn-hangzhou-a'}" \\\n`
-    vSwitchCreation += `  --output cols=VSwitchId rows=VSwitchId \\\n`
-    vSwitchCreation += `  | tail -n 1 | tr -d ' ')\n\n`
+    vSwitchCreation += `  --Description "vSwitch ${index + 1}" \\\n`
+    vSwitchCreation += `  2>/dev/null | python3 -c "\nimport json,sys\ntry:\n  s=sys.stdin.read(); print(json.loads(s).get('VSwitchId','') if s.strip() else '')\nexcept: print('')\n")\n\n`
+    vSwitchCreation += `if [ -z "\${VSWITCH${index + 1}_ID}" ]; then\n`
+    vSwitchCreation += `  echo "Error: Failed to create vSwitch ${index + 1}"\n`
+    vSwitchCreation += `  exit 1\n`
+    vSwitchCreation += `fi\n`
     vSwitchCreation += `echo "vSwitch ${index + 1} created with ID: \${VSWITCH${index + 1}_ID}"\n`
     vSwitchCreation += `sleep 2\n\n`
   })
@@ -1240,31 +1261,30 @@ export function processAliCloudAliyunTemplate(templateContent: string, data: Tem
 export function processAliCloudTerraformTemplate(templateContent: string, data: TemplateData): string {
   let content = templateContent
 
-  // Generate vSwitch variables
-  let vSwitchVariables = ''
+  // Data source for dynamic zone lookup (works across all regions)
+  let vSwitchVariables = '\ndata "alicloud_zones" "available" {\n'
+  vSwitchVariables += `  available_resource_creation = "VSwitch"\n`
+  vSwitchVariables += `}\n`
+
+  // Generate vSwitch CIDR variables only (zones resolved dynamically at apply time)
   data.subnets.forEach((subnet, index) => {
     vSwitchVariables += `\nvariable "vswitch${index + 1}_cidr" {\n`
     vSwitchVariables += `  description = "CIDR block for vSwitch ${index + 1}"\n`
     vSwitchVariables += `  type        = string\n`
     vSwitchVariables += `  default     = "${subnet.cidr}"\n`
     vSwitchVariables += `}\n`
-
-    vSwitchVariables += `\nvariable "vswitch${index + 1}_zone" {\n`
-    vSwitchVariables += `  description = "Availability Zone for vSwitch ${index + 1}"\n`
-    vSwitchVariables += `  type        = string\n`
-    vSwitchVariables += `  default     = "${subnet.zone || 'cn-hangzhou-a'}"\n`
-    vSwitchVariables += `}\n`
   })
 
-  // Generate vSwitch resources
+  // Generate vSwitch resources using dynamic zone lookup
   let vSwitchResources = ''
-  data.subnets.forEach((subnet, index) => {
+  data.subnets.forEach((_subnet, index) => {
+    const azIndex = index
     vSwitchResources += `resource "alicloud_vswitch" "vswitch${index + 1}" {\n`
     vSwitchResources += `  vpc_id       = alicloud_vpc.vpc.id\n`
     vSwitchResources += `  cidr_block   = var.vswitch${index + 1}_cidr\n`
-    vSwitchResources += `  zone_id      = var.vswitch${index + 1}_zone\n`
+    vSwitchResources += `  zone_id      = data.alicloud_zones.available.zones[${azIndex} % length(data.alicloud_zones.available.zones)].id\n`
     vSwitchResources += `  vswitch_name = "\${var.vpc_name}-vswitch${index + 1}"\n`
-    vSwitchResources += `  description  = "vSwitch ${index + 1} in \${var.vswitch${index + 1}_zone}"\n\n`
+    vSwitchResources += `  description  = "vSwitch ${index + 1}"\n\n`
     vSwitchResources += `  tags = {\n`
     vSwitchResources += `    Environment = "Production"\n`
     vSwitchResources += `    ManagedBy   = "Terraform"\n`
