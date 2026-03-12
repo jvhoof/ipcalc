@@ -34,27 +34,19 @@ Uses Python for deterministic IP calculations matching the TypeScript CLI implem
 </objective>
 
 <quick_start>
-Basic usage - calculate subnets for a single VNet/VPC:
+Users ask for IP calculations and subnet planning in natural language. Examples of how users will phrase requests:
 
 **Show network information**:
-```
-/ipcalc-for-cloud "azure, 10.0.0.0/16, 4 subnets"
-```
+> "Calculate 4 subnets for Azure, base VNET network 10.0.0.0/16"
 
 **Generate Terraform for AWS**:
-```
-/ipcalc-for-cloud "aws, 10.0.0.0/16, 3 subnets, output: terraform"
-```
+> "Give me Terraform for an AWS VPC at 10.0.0.0/16 with 3 subnets"
 
 **Custom subnet prefix** (to avoid filling entire network):
-```
-/ipcalc-for-cloud "azure, 172.16.1.0/24, 4 subnets, prefix: /26"
-```
+> "Plan 4 subnets for Azure 172.16.1.0/24 using /26 prefix"
 
 **Hub-spoke topology for Azure**:
-```
-/ipcalc-for-cloud "azure, 10.0.0.0/16, 2 subnets, spokes: 10.1.0.0/16,10.2.0.0/16, spoke-subnets: 2,2, output: terraform"
-```
+> "Create an Azure hub-spoke with hub 10.0.0.0/16 (2 subnets), spokes at 10.1.0.0/16 and 10.2.0.0/16 (2 subnets each), output Terraform"
 
 The skill will:
 - Calculate optimal CIDR splits based on provider constraints
