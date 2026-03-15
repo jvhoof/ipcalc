@@ -1041,14 +1041,63 @@ watch(vnetCidr, () => {
   updateSpokeVNetCIDRs()
 })
 
-onMounted(() => {
-  // Set default subnet prefix based on initial VNet CIDR
-  const defaultPrefix = getDefaultSubnetPrefix()
-  if (defaultPrefix !== null) {
-    desiredSubnetPrefix.value = defaultPrefix
+onMounted(async () => {
+  const params = new URLSearchParams(window.location.search)
+
+  // Pre-populate form from URL params
+  const urlCidr = params.get('cidr')
+  const urlSubnets = params.get('subnets')
+  const urlPrefix = params.get('prefix')
+  const urlFormat = params.get('format')
+  const urlSpokeCidrs = params.get('spoke-cidrs')
+  const urlSpokeSubnets = params.get('spoke-subnets')
+
+  if (urlCidr) vnetCidr.value = urlCidr
+  if (urlSubnets) numberOfSubnets.value = parseInt(urlSubnets, 10)
+  if (urlPrefix) desiredSubnetPrefix.value = parseInt(urlPrefix, 10)
+
+  if (urlSpokeCidrs) {
+    const cidrs = urlSpokeCidrs.split(',').map(c => c.trim()).filter(Boolean)
+    const subnetCounts = urlSpokeSubnets
+      ? urlSpokeSubnets.split(',').map(s => parseInt(s.trim(), 10))
+      : cidrs.map(() => 2)
+
+    if (cidrs.length > 0) {
+      peeringEnabled.value = true
+      numberOfSpokeVNets.value = cidrs.length
+      spokeVNets.value = cidrs.map((cidr, i) => ({
+        cidr,
+        numberOfSubnets: subnetCounts[i] ?? 2,
+        vnetInfo: null,
+        subnets: [],
+        error: ''
+      }))
+    }
   }
+
+  // Set default subnet prefix based on initial VNet CIDR (only if not set via URL)
+  if (!urlPrefix) {
+    const defaultPrefix = getDefaultSubnetPrefix()
+    if (defaultPrefix !== null) {
+      desiredSubnetPrefix.value = defaultPrefix
+    }
+  }
+
   calculateVNet()
   window.addEventListener('keydown', handleKeydown)
+
+  // Auto-generate output if format was specified in URL
+  if (urlFormat && vnetInfo.value) {
+    const formatMap: Record<string, () => Promise<void>> = {
+      cli: generateAzureCLI,
+      terraform: generateTerraform,
+      bicep: generateBicep,
+      arm: generateARM,
+      powershell: generatePowerShell,
+    }
+    const generateFn = formatMap[urlFormat]
+    if (generateFn) await generateFn()
+  }
 })
 
 onUnmounted(() => {

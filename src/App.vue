@@ -148,6 +148,8 @@ const handleThemeChange = (e: MediaQueryListEvent) => {
   isDarkMode.value = e.matches
 }
 
+const VALID_TABS = ['on-premises', 'azure', 'aws', 'gcp', 'oracle', 'alicloud']
+
 // Initialize theme detection on mount
 onMounted(() => {
   detectSystemTheme()
@@ -155,6 +157,13 @@ onMounted(() => {
   // Listen for system theme changes
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   mediaQuery.addEventListener('change', handleThemeChange)
+
+  // Switch tab based on ?provider= URL param
+  const params = new URLSearchParams(window.location.search)
+  const provider = params.get('provider')
+  if (provider && VALID_TABS.includes(provider)) {
+    activeTab.value = provider
+  }
 })
 
 // Clean up event listener on unmount
