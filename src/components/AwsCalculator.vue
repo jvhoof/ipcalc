@@ -298,6 +298,16 @@
           • VPC CIDR range: /{{ awsConfig.maxCidrPrefix }} to /{{ awsConfig.minCidrPrefix }}
         </div>
       </v-alert>
+
+      <!-- API URL Panel -->
+      <ApiUrlPanel
+        v-if="vpcInfo"
+        provider="aws"
+        :cidr="vpcCidr"
+        :subnets="numberOfSubnets"
+        :prefix="desiredSubnetPrefix"
+        :is-dark-mode="isDarkMode"
+      />
     </v-card-text>
   </v-card>
 </template>
@@ -311,6 +321,7 @@ import {
   loadAWSTerraformTemplate,
   loadAWSCloudFormationTemplate
 } from '../utils/templateLoader'
+import ApiUrlPanel from './ApiUrlPanel.vue'
 
 // Inject dark mode state from parent
 const isDarkMode = inject<Ref<boolean>>('isDarkMode', ref(false))

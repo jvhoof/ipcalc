@@ -417,6 +417,18 @@
           • Subnets are regional resources
         </div>
       </v-alert>
+
+      <!-- API URL Panel -->
+      <ApiUrlPanel
+        v-if="vpcInfo"
+        provider="gcp"
+        :cidr="vpcCidr"
+        :subnets="numberOfSubnets"
+        :prefix="desiredSubnetPrefix"
+        :spoke-cidrs="configuredSpokeCidrs"
+        :spoke-subnets="configuredSpokeSubnets"
+        :is-dark-mode="isDarkMode"
+      />
     </v-card-text>
   </v-card>
 </template>
@@ -429,6 +441,7 @@ import {
   loadGCPGcloudTemplate,
   loadGCPTerraformTemplate
 } from '../utils/templateLoader'
+import ApiUrlPanel from './ApiUrlPanel.vue'
 
 // Inject dark mode state from parent
 const isDarkMode = inject<Ref<boolean>>('isDarkMode', ref(false))
@@ -481,6 +494,14 @@ const codeDialogTitle = ref<string>('')
 const peeringEnabled = ref<boolean>(false)
 const numberOfSpokeVPCs = ref<number>(2)
 const spokeVPCs = ref<SpokeVPC[]>([])
+
+// Computed spoke data for the API URL panel — only spokes with a configured CIDR
+const configuredSpokeCidrs = computed(() =>
+  spokeVPCs.value.filter(s => s.cidr).map(s => s.cidr)
+)
+const configuredSpokeSubnets = computed(() =>
+  spokeVPCs.value.filter(s => s.cidr).map(s => s.numberOfSubnets)
+)
 
 const regions = gcpConfig.availabilityZones
 

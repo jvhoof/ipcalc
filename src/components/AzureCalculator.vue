@@ -442,6 +442,18 @@
           • Maximum subnet size: /{{ azureConfig.maxCidrPrefix }}
         </div>
       </v-alert>
+
+      <!-- API URL Panel -->
+      <ApiUrlPanel
+        v-if="vnetInfo"
+        provider="azure"
+        :cidr="vnetCidr"
+        :subnets="numberOfSubnets"
+        :prefix="desiredSubnetPrefix"
+        :spoke-cidrs="configuredSpokeCidrs"
+        :spoke-subnets="configuredSpokeSubnets"
+        :is-dark-mode="isDarkMode"
+      />
     </v-card-text>
   </v-card>
 </template>
@@ -457,6 +469,7 @@ import {
   loadAzureARMTemplate,
   loadAzurePowerShellTemplate
 } from '../utils/templateLoader'
+import ApiUrlPanel from './ApiUrlPanel.vue'
 
 // Inject dark mode state from parent
 const isDarkMode = inject<Ref<boolean>>('isDarkMode', ref(false))
@@ -508,6 +521,14 @@ const codeDialogTitle = ref<string>('')
 const peeringEnabled = ref<boolean>(false)
 const numberOfSpokeVNets = ref<number>(2)
 const spokeVNets = ref<SpokeVNet[]>([])
+
+// Computed spoke data for the API URL panel — only spokes with a configured CIDR
+const configuredSpokeCidrs = computed(() =>
+  spokeVNets.value.filter(s => s.cidr).map(s => s.cidr)
+)
+const configuredSpokeSubnets = computed(() =>
+  spokeVNets.value.filter(s => s.cidr).map(s => s.numberOfSubnets)
+)
 
 const parseIP = (ip: string): number[] | null => {
   const parts = ip.split('.')
