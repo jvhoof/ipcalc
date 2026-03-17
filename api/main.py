@@ -8,12 +8,17 @@ Exposes IaC code generation via HTTP so users can curl the output directly:
   curl "https://example.com/api/gcp?cidr=10.0.0.0/16&subnets=4&format=terraform" > main.tf
 """
 
+import ipaddress
+import logging
 import os
 import sys
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
+
+logger = logging.getLogger('ipcalc.api')
 
 # Add the skill scripts directory to the path so we can import without moving files
 _SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'skills', 'ipcalc-for-cloud', 'scripts')
@@ -45,6 +50,98 @@ GCP_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
     'gcloud':    ('text/x-shellscript', 'deploy.sh'),
 }
 
+# Safety limits
+_MAX_SPOKE_COUNT = 10
+_CIDR_MAX_LEN = 18       # "255.255.255.255/32"
+_SPOKE_LIST_MAX_LEN = (_CIDR_MAX_LEN + 1) * _MAX_SPOKE_COUNT  # ~190 chars
+
+
+# ---------------------------------------------------------------------------
+# Input validation helpers
+# ---------------------------------------------------------------------------
+
+def _validate_cidr(value: str, field: str = 'cidr') -> str:
+    """Return normalized CIDR or raise HTTP 400 with a clear message.
+
+    Using the parsed output of ipaddress.ip_network() as the canonical form
+    ensures that only clean "A.B.C.D/prefix" strings (digits, dots, slash)
+    ever reach the template renderer, preventing any character-level injection
+    in the generated IaC files.
+    """
+    value = value.strip()
+    if not value:
+        raise HTTPException(status_code=400, detail=f"'{field}' must not be empty.")
+    if len(value) > _CIDR_MAX_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"'{field}' value is too long ({len(value)} chars). "
+                f"A valid IPv4 CIDR is at most {_CIDR_MAX_LEN} characters, e.g. 10.0.0.0/16."
+            ),
+        )
+    try:
+        network = ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"'{field}' value '{value}' is not a valid CIDR block. "
+                "Expected an IPv4 network in CIDR notation, e.g. 10.0.0.0/16."
+            ),
+        )
+    if network.version != 4:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{field}' value '{value}' is IPv6. Only IPv4 CIDR blocks are supported.",
+        )
+    return str(network)  # normalized "A.B.C.D/prefix" — safe for template embedding
+
+
+def _parse_spoke_cidrs(raw: str) -> list[str]:
+    """Parse, validate, and normalize a comma-separated list of spoke CIDRs."""
+    parts = [c.strip() for c in raw.split(',') if c.strip()]
+    if not parts:
+        raise HTTPException(status_code=400, detail="'spoke-cidrs' must not be empty.")
+    if len(parts) > _MAX_SPOKE_COUNT:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Too many spoke networks: {len(parts)} provided, "
+                f"maximum is {_MAX_SPOKE_COUNT}."
+            ),
+        )
+    return [_validate_cidr(c, f'spoke-cidrs[{i}]') for i, c in enumerate(parts)]
+
+
+def _parse_spoke_subnets(raw: str, expected_count: int) -> list[int]:
+    """Parse and validate a comma-separated list of spoke subnet counts."""
+    try:
+        counts = [int(s.strip()) for s in raw.split(',') if s.strip()]
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="'spoke-subnets' must be a comma-separated list of positive integers, e.g. 2,4,2.",
+        )
+    if len(counts) != expected_count:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"'spoke-subnets' has {len(counts)} value(s) but 'spoke-cidrs' has {expected_count}. "
+                "Counts must match."
+            ),
+        )
+    if any(c < 1 or c > 256 for c in counts):
+        raise HTTPException(
+            status_code=400,
+            detail="Each value in 'spoke-subnets' must be between 1 and 256.",
+        )
+    return counts
+
+
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
+
 app = FastAPI(title='ipcalc API', docs_url='/api/docs', redoc_url=None)
 
 app.add_middleware(
@@ -55,40 +152,75 @@ app.add_middleware(
 )
 
 
+@app.middleware('http')
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """Flatten FastAPI's nested validation errors into the same {"detail": "..."} shape
+    used by the rest of the API so clients have a consistent error format."""
+    messages = []
+    for error in exc.errors():
+        loc_parts = [str(x) for x in error['loc'] if x not in ('query', 'body')]
+        location = ' → '.join(loc_parts) if loc_parts else 'request'
+        messages.append(f"{location}: {error['msg']}")
+    return JSONResponse(
+        status_code=422,
+        content={'detail': '; '.join(messages)},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch unexpected errors and return a safe 500 without leaking stack traces."""
+    logger.exception('Unhandled exception on %s %s', request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={'detail': 'An unexpected error occurred. Please verify your input and try again.'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
 @app.get('/api/azure', summary='Generate Azure IaC code')
 def generate_azure(
-    cidr: str = Query(..., description='Hub VNet CIDR, e.g. 10.0.0.0/16'),
+    cidr: str = Query(..., max_length=_CIDR_MAX_LEN, description='Hub VNet CIDR, e.g. 10.0.0.0/16'),
     subnets: int = Query(..., ge=1, le=256, description='Number of subnets'),
     format: str = Query(..., description='Output format: terraform, cli, bicep, arm, powershell'),
-    prefix: int | None = Query(None, description='Optional desired subnet prefix, e.g. 26 for /26'),
-    spoke_cidrs: str | None = Query(None, alias='spoke-cidrs', description='Comma-separated spoke VNet CIDRs'),
-    spoke_subnets: str | None = Query(None, alias='spoke-subnets', description='Comma-separated spoke subnet counts'),
+    prefix: int | None = Query(None, ge=1, le=32, description='Optional desired subnet prefix, e.g. 26 for /26'),
+    spoke_cidrs: str | None = Query(None, alias='spoke-cidrs', max_length=_SPOKE_LIST_MAX_LEN, description='Comma-separated spoke VNet CIDRs'),
+    spoke_subnets: str | None = Query(None, alias='spoke-subnets', max_length=64, description='Comma-separated spoke subnet counts'),
 ) -> Response:
     if format not in AZURE_FORMAT_CONFIG:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid format '{format}'. Must be one of: {', '.join(AZURE_FORMAT_CONFIG)}",
+            detail=(
+                f"Invalid format '{format}'. "
+                f"Supported formats: {', '.join(AZURE_FORMAT_CONFIG)}."
+            ),
         )
 
-    # Parse hub-spoke params
-    spoke_cidrs_list: list[str] = [c.strip() for c in spoke_cidrs.split(',')] if spoke_cidrs else []
+    cidr = _validate_cidr(cidr)
+
+    spoke_cidrs_list: list[str] = []
     spoke_subnets_list: list[int] = []
 
-    if spoke_cidrs_list:
-        if spoke_subnets:
-            try:
-                spoke_subnets_list = [int(s.strip()) for s in spoke_subnets.split(',')]
-            except ValueError:
-                raise HTTPException(status_code=400, detail='spoke-subnets must be comma-separated integers')
-            if len(spoke_subnets_list) != len(spoke_cidrs_list):
-                raise HTTPException(
-                    status_code=400,
-                    detail='Number of spoke-subnets must match number of spoke-cidrs',
-                )
-        else:
-            spoke_subnets_list = [2] * len(spoke_cidrs_list)
+    if spoke_cidrs:
+        spoke_cidrs_list = _parse_spoke_cidrs(spoke_cidrs)
+        spoke_subnets_list = (
+            _parse_spoke_subnets(spoke_subnets, len(spoke_cidrs_list))
+            if spoke_subnets
+            else [2] * len(spoke_cidrs_list)
+        )
 
-    # Calculate subnets
     if spoke_cidrs_list:
         result = generate_hub_spoke_topology(
             cidr, subnets, spoke_cidrs_list, spoke_subnets_list, 'azure', prefix
@@ -126,16 +258,21 @@ def generate_azure(
 
 @app.get('/api/aws', summary='Generate AWS IaC code')
 def generate_aws(
-    cidr: str = Query(..., description='VPC CIDR, e.g. 10.0.0.0/16'),
+    cidr: str = Query(..., max_length=_CIDR_MAX_LEN, description='VPC CIDR, e.g. 10.0.0.0/16'),
     subnets: int = Query(..., ge=1, le=256, description='Number of subnets'),
     format: str = Query(..., description='Output format: terraform, cli, cloudformation'),
-    prefix: int | None = Query(None, description='Optional desired subnet prefix, e.g. 24 for /24'),
+    prefix: int | None = Query(None, ge=1, le=32, description='Optional desired subnet prefix, e.g. 24 for /24'),
 ) -> Response:
     if format not in AWS_FORMAT_CONFIG:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid format '{format}'. Must be one of: {', '.join(AWS_FORMAT_CONFIG)}",
+            detail=(
+                f"Invalid format '{format}'. "
+                f"Supported formats: {', '.join(AWS_FORMAT_CONFIG)}."
+            ),
         )
+
+    cidr = _validate_cidr(cidr)
 
     result = calculate_subnets(cidr, subnets, 'aws', prefix)
     if 'error' in result:
@@ -161,38 +298,35 @@ def generate_aws(
 
 @app.get('/api/gcp', summary='Generate GCP IaC code')
 def generate_gcp(
-    cidr: str = Query(..., description='Hub VPC CIDR, e.g. 10.0.0.0/16'),
+    cidr: str = Query(..., max_length=_CIDR_MAX_LEN, description='Hub VPC CIDR, e.g. 10.0.0.0/16'),
     subnets: int = Query(..., ge=1, le=256, description='Number of subnets'),
     format: str = Query(..., description='Output format: terraform, gcloud'),
-    prefix: int | None = Query(None, description='Optional desired subnet prefix, e.g. 24 for /24'),
-    spoke_cidrs: str | None = Query(None, alias='spoke-cidrs', description='Comma-separated spoke VPC CIDRs'),
-    spoke_subnets: str | None = Query(None, alias='spoke-subnets', description='Comma-separated spoke subnet counts'),
+    prefix: int | None = Query(None, ge=1, le=32, description='Optional desired subnet prefix, e.g. 24 for /24'),
+    spoke_cidrs: str | None = Query(None, alias='spoke-cidrs', max_length=_SPOKE_LIST_MAX_LEN, description='Comma-separated spoke VPC CIDRs'),
+    spoke_subnets: str | None = Query(None, alias='spoke-subnets', max_length=64, description='Comma-separated spoke subnet counts'),
 ) -> Response:
     if format not in GCP_FORMAT_CONFIG:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid format '{format}'. Must be one of: {', '.join(GCP_FORMAT_CONFIG)}",
+            detail=(
+                f"Invalid format '{format}'. "
+                f"Supported formats: {', '.join(GCP_FORMAT_CONFIG)}."
+            ),
         )
 
-    # Parse hub-spoke params
-    spoke_cidrs_list: list[str] = [c.strip() for c in spoke_cidrs.split(',')] if spoke_cidrs else []
+    cidr = _validate_cidr(cidr)
+
+    spoke_cidrs_list: list[str] = []
     spoke_subnets_list: list[int] = []
 
-    if spoke_cidrs_list:
-        if spoke_subnets:
-            try:
-                spoke_subnets_list = [int(s.strip()) for s in spoke_subnets.split(',')]
-            except ValueError:
-                raise HTTPException(status_code=400, detail='spoke-subnets must be comma-separated integers')
-            if len(spoke_subnets_list) != len(spoke_cidrs_list):
-                raise HTTPException(
-                    status_code=400,
-                    detail='Number of spoke-subnets must match number of spoke-cidrs',
-                )
-        else:
-            spoke_subnets_list = [2] * len(spoke_cidrs_list)
+    if spoke_cidrs:
+        spoke_cidrs_list = _parse_spoke_cidrs(spoke_cidrs)
+        spoke_subnets_list = (
+            _parse_spoke_subnets(spoke_subnets, len(spoke_cidrs_list))
+            if spoke_subnets
+            else [2] * len(spoke_cidrs_list)
+        )
 
-    # Calculate subnets
     if spoke_cidrs_list:
         result = generate_hub_spoke_topology(
             cidr, subnets, spoke_cidrs_list, spoke_subnets_list, 'gcp', prefix
