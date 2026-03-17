@@ -12,11 +12,13 @@ import ipaddress
 import logging
 import os
 import sys
+from http import HTTPStatus
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger('ipcalc.api')
 
@@ -49,6 +51,31 @@ GCP_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
     'terraform': ('text/plain',         'main.tf'),
     'gcloud':    ('text/x-shellscript', 'deploy.sh'),
 }
+
+# RFC 9457 — Problem Details for HTTP APIs
+_PROBLEM_CONTENT_TYPE = 'application/problem+json'
+
+
+def _problem(status: int, detail: str) -> JSONResponse:
+    """Build an RFC 9457 Problem Details response.
+
+    Returns a JSON body with:
+      type    — always "about:blank" (no problem-specific URI registered)
+      title   — standard HTTP status phrase, e.g. "Bad Request"
+      status  — mirrors the HTTP status code
+      detail  — human-readable explanation of this specific occurrence
+    """
+    return JSONResponse(
+        status_code=status,
+        content={
+            'type': 'about:blank',
+            'title': HTTPStatus(status).phrase,
+            'status': status,
+            'detail': detail,
+        },
+        media_type=_PROBLEM_CONTENT_TYPE,
+    )
+
 
 # Safety limits
 _MAX_SPOKE_COUNT = 10
@@ -161,29 +188,32 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """Return RFC 9457 Problem Details for all HTTPException responses."""
+    return _problem(exc.status_code, str(exc.detail))
+
+
 @app.exception_handler(RequestValidationError)
-async def validation_error_handler(request: Request, exc: RequestValidationError):
-    """Flatten FastAPI's nested validation errors into the same {"detail": "..."} shape
-    used by the rest of the API so clients have a consistent error format."""
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Return RFC 9457 Problem Details for FastAPI query/body validation errors.
+
+    Flattens FastAPI's nested error list into a single human-readable detail string
+    so the shape is consistent with all other error responses.
+    """
     messages = []
     for error in exc.errors():
         loc_parts = [str(x) for x in error['loc'] if x not in ('query', 'body')]
         location = ' → '.join(loc_parts) if loc_parts else 'request'
         messages.append(f"{location}: {error['msg']}")
-    return JSONResponse(
-        status_code=422,
-        content={'detail': '; '.join(messages)},
-    )
+    return _problem(422, '; '.join(messages))
 
 
 @app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Catch unexpected errors and return a safe 500 without leaking stack traces."""
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Return RFC 9457 Problem Details for unexpected errors without leaking internals."""
     logger.exception('Unhandled exception on %s %s', request.method, request.url.path)
-    return JSONResponse(
-        status_code=500,
-        content={'detail': 'An unexpected error occurred. Please verify your input and try again.'},
-    )
+    return _problem(500, 'An unexpected error occurred. Please verify your input and try again.')
 
 
 # ---------------------------------------------------------------------------

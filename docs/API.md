@@ -173,36 +173,86 @@ curl "https://ipcalc.example.com/api/gcp?cidr=10.0.0.0/16&subnets=2&format=terra
 
 ## Error responses
 
-All errors return JSON with a `detail` field explaining what went wrong. The HTTP status code indicates the error category.
+All error responses conform to **[RFC 9457 — Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457)**.
+
+### Response format
+
+Every error response uses `Content-Type: application/problem+json` and a JSON body with the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"about:blank"` — no problem-type URI is registered |
+| `title` | string | Standard HTTP status phrase, e.g. `"Bad Request"` |
+| `status` | integer | Mirrors the HTTP response status code |
+| `detail` | string | Human-readable explanation of this specific occurrence |
+
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "'cidr' value 'not-a-cidr' is not a valid CIDR block. Expected an IPv4 network in CIDR notation, e.g. 10.0.0.0/16."
+}
+```
 
 ### HTTP 400 — Invalid input
 
-Returned when a parameter value is not acceptable.
+Returned when a parameter value is syntactically correct but semantically invalid.
 
 ```bash
 # Invalid CIDR notation
 $ curl "https://ipcalc.example.com/api/azure?cidr=not-a-cidr&subnets=4&format=terraform"
-{"detail":"'cidr' value 'not-a-cidr' is not a valid CIDR block. Expected an IPv4 network in CIDR notation, e.g. 10.0.0.0/16."}
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "'cidr' value 'not-a-cidr' is not a valid CIDR block. Expected an IPv4 network in CIDR notation, e.g. 10.0.0.0/16."
+}
 
 # IPv6 CIDR (not supported)
 $ curl "https://ipcalc.example.com/api/aws?cidr=2001:db8::/32&subnets=4&format=terraform"
-{"detail":"'cidr' value '2001:db8::/32' is IPv6. Only IPv4 CIDR blocks are supported."}
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "'cidr' value '2001:db8::/32' is IPv6. Only IPv4 CIDR blocks are supported."
+}
 
 # Unknown output format
 $ curl "https://ipcalc.example.com/api/azure?cidr=10.0.0.0/16&subnets=4&format=unknown"
-{"detail":"Invalid format 'unknown'. Supported formats: terraform, cli, bicep, arm, powershell."}
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Invalid format 'unknown'. Supported formats: terraform, cli, bicep, arm, powershell."
+}
 
 # Network too small for the requested subnet count
 $ curl "https://ipcalc.example.com/api/aws?cidr=10.0.0.0/30&subnets=100&format=terraform"
-{"detail":"Cannot divide /30 into 100 subnets. ..."}
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Cannot divide /30 into 100 subnets. ..."
+}
 
-# Spoke CIDR count exceeds maximum
-$ curl "https://ipcalc.example.com/api/gcp?cidr=10.0.0.0/8&subnets=2&format=terraform&spoke-cidrs=10.1.0.0/16,10.2.0.0/16,...(11 entries)"
-{"detail":"Too many spoke networks: 11 provided, maximum is 10."}
+# Spoke CIDR count exceeds maximum (10)
+$ curl "https://ipcalc.example.com/api/gcp?cidr=10.0.0.0/8&subnets=2&format=terraform&spoke-cidrs=...(11 entries)"
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Too many spoke networks: 11 provided, maximum is 10."
+}
 
 # Mismatched spoke-subnets count
 $ curl "https://ipcalc.example.com/api/azure?...&spoke-cidrs=10.1.0.0/16,10.2.0.0/16&spoke-subnets=2"
-{"detail":"'spoke-subnets' has 1 value(s) but 'spoke-cidrs' has 2. Counts must match."}
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "'spoke-subnets' has 1 value(s) but 'spoke-cidrs' has 2. Counts must match."
+}
 ```
 
 ### HTTP 422 — Missing or wrong-type parameter
@@ -212,23 +262,43 @@ Returned when a required parameter is absent or has the wrong type (e.g. a strin
 ```bash
 # Missing required parameter
 $ curl "https://ipcalc.example.com/api/aws?subnets=4&format=terraform"
-{"detail":"cidr: Field required"}
+{
+  "type": "about:blank",
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "cidr: Field required"
+}
 
 # subnets out of range
 $ curl "https://ipcalc.example.com/api/aws?cidr=10.0.0.0/16&subnets=0&format=terraform"
-{"detail":"subnets: Input should be greater than or equal to 1"}
+{
+  "type": "about:blank",
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "subnets: Input should be greater than or equal to 1"
+}
 
 # prefix out of range
 $ curl "https://ipcalc.example.com/api/aws?cidr=10.0.0.0/16&subnets=4&format=terraform&prefix=33"
-{"detail":"prefix: Input should be less than or equal to 32"}
+{
+  "type": "about:blank",
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "prefix: Input should be less than or equal to 32"
+}
 ```
 
 ### HTTP 500 — Server error
 
-Returned only when an unexpected internal error occurs. The response does not include stack traces or internal details.
+Returned only when an unexpected internal error occurs. No stack traces or internal details are exposed.
 
 ```json
-{"detail": "An unexpected error occurred. Please verify your input and try again."}
+{
+  "type": "about:blank",
+  "title": "Internal Server Error",
+  "status": 500,
+  "detail": "An unexpected error occurred. Please verify your input and try again."
+}
 ```
 
 ---
