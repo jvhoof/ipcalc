@@ -411,7 +411,7 @@
       <v-alert density="compact" class="mt-2" :style="themeStyles.infoBox" border="start">
         <div class="text-caption">
           <strong>GCP VPC Requirements:</strong><br>
-          • {{ gcpConfig.reservedIpCount }} IPs are reserved by GCP (First 2 IPs and last 2 IPs)<br>
+          • {{ gcpConfig.reservedIpCount }} IPs unavailable per subnet (.0 network, .1 gateway, .n-2 reserved, .n-1 broadcast)<br>
           • Minimum subnet size: /{{ gcpConfig.minCidrPrefix }} ({{ Math.pow(2, 32 - gcpConfig.minCidrPrefix) }} IPs, {{ Math.pow(2, 32 - gcpConfig.minCidrPrefix) - gcpConfig.reservedIpCount }} usable)<br>
           • Subnet CIDR range: /{{ gcpConfig.maxCidrPrefix }} to /{{ gcpConfig.minCidrPrefix }}<br>
           • Subnets are regional resources
@@ -672,7 +672,7 @@ const calculateVPC = (): void => {
       const subnetNetwork = numberToIP(subnetNetworkNum)
       const subnetMask = cidrToMask(subnetPrefix)
 
-      // GCP reserves: first 2 IPs and last 2 IPs
+      // GCP reserves 4 IPs: network (.0), gateway (.1), second-to-last (.n-2), broadcast (.n-1)
       const reserved: string[] = [
         numberToIP(subnetNetworkNum).join('.'),           // x.x.x.0 - Network address
         numberToIP(subnetNetworkNum + 1).join('.'),       // x.x.x.1 - Default gateway
@@ -919,7 +919,7 @@ const calculateSpokeSubnets = (index: number): void => {
       const subnetNetwork = numberToIP(subnetNetworkNum)
       const subnetMask = cidrToMask(subnetPrefix)
 
-      // GCP reserves: first 2 IPs and last 2 IPs
+      // GCP reserves 4 IPs: network (.0), gateway (.1), second-to-last (.n-2), broadcast (.n-1)
       const reserved: string[] = [
         numberToIP(subnetNetworkNum).join('.'),           // x.x.x.0 - Network address
         numberToIP(subnetNetworkNum + 1).join('.'),       // x.x.x.1 - Default gateway

@@ -39,6 +39,12 @@ variable "routing_mode" {
   default     = "REGIONAL"
 }
 
+variable "mtu" {
+  description = "MTU for the VPC (1460 for standard, 1500 for Premium tier or Interconnect)"
+  type        = number
+  default     = 1460
+}
+
 {{subnetVariables}}
 {{spokeVPCVariables}}
 
@@ -50,7 +56,7 @@ resource "google_compute_network" "vpc" {
   name                    = var.vpc_name
   auto_create_subnetworks = false
   routing_mode            = var.routing_mode
-  mtu                     = 1460
+  mtu                     = var.mtu
   project                 = var.project_id
 
   description = "Hub VPC created by Terraform"
@@ -85,17 +91,7 @@ resource "google_compute_firewall" "allow_internal" {
   project = var.project_id
 
   allow {
-    protocol = "tcp"
-    ports    = ["0-65535"]
-  }
-
-  allow {
-    protocol = "udp"
-    ports    = ["0-65535"]
-  }
-
-  allow {
-    protocol = "icmp"
+    protocol = "all"
   }
 
   source_ranges = ["{{vpcCidr}}"]

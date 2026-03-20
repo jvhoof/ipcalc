@@ -56,7 +56,7 @@ export const cloudProviderConfig: AllCloudProviderConfig = {
   gcp: {
     defaultCidr: '172.16.1.0/24',
     defaultSubnetCount: 3,
-    reservedIpCount: 4, // First 2 IPs + last 2 IPs
+    reservedIpCount: 4, // network (.0), gateway (.1), second-to-last (.n-2), broadcast (.n-1)
     minCidrPrefix: 29,
     maxCidrPrefix: 8,
     availabilityZones: [

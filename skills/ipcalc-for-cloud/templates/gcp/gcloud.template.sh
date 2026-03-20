@@ -8,6 +8,7 @@
 PROJECT_ID="your-project-id"
 VPC_NAME="myproject-vpc"
 ROUTING_MODE="regional"  # or "global"
+MTU=1460                 # 1460 for standard, 1500 for Premium tier or Interconnect
 {{spokeVPCVariables}}
 
 # Set the project
@@ -20,7 +21,7 @@ echo "Creating Hub VPC..."
 gcloud compute networks create "${VPC_NAME}" \
   --subnet-mode=custom \
   --bgp-routing-mode=${ROUTING_MODE} \
-  --mtu=1460
+  --mtu=${MTU}
 
 echo "Hub VPC ${VPC_NAME} created successfully"
 
