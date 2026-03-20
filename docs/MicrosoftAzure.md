@@ -18,41 +18,125 @@ This GitHub Actions workflow (`azure-vnet-test.yml`) automatically deploys, vali
 
 ## Prerequisites
 
-### 1. Azure Credentials Setup
+### 1. Azure Credentials Setup (OIDC / Workload Identity Federation)
 
-You need to create an Azure Service Principal and store its credentials in GitHub Secrets.
+This workflow uses **OpenID Connect (OIDC)** to authenticate with Azure — no long-lived secrets or client secrets are stored in GitHub. GitHub acts as an identity provider; Azure trusts tokens it issues for this specific repository.
 
-1. **Create a Service Principal:**
+#### Step 1 — Create an App Registration
 
 ```bash
-az ad sp create-for-rbac \
-  --name "github-actions-ipcalc" \
-  --role contributor \
-  --scopes /subscriptions/{subscription-id} \
-  --sdk-auth
+# Create the App Registration (returns the appId / client-id)
+az ad app create --display-name "github-actions-ipcalc"
 ```
 
-2. **Store the output JSON in GitHub Secrets:**
-   - Go to your repository settings
-   - Navigate to **Secrets and variables** → **Actions**
-   - Create a new secret named `AZURE_CREDENTIALS`
-   - Paste the entire JSON output from the previous command
+Note the `appId` (client ID) from the output.
 
-The JSON should look like this:
-```json
-{
-  "clientId": "<GUID>",
-  "clientSecret": "<STRING>",
-  "subscriptionId": "<GUID>",
-  "tenantId": "<GUID>",
-  "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
-  "resourceManagerEndpointUrl": "https://management.azure.com/",
-  "activeDirectoryGraphResourceId": "https://graph.windows.net/",
-  "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
-  "galleryEndpointUrl": "https://gallery.azure.com/",
-  "managementEndpointUrl": "https://management.core.windows.net/"
-}
+#### Step 2 — Create a Service Principal for the App Registration
+
+```bash
+az ad sp create --id <appId>
 ```
+
+Note the `id` (object ID of the service principal) from the output.
+
+#### Step 3 — Add a Federated Identity Credential
+
+This tells Azure to trust OIDC tokens issued by GitHub Actions for your repository.
+
+```bash
+# For the main branch (push / workflow_dispatch triggers)
+az ad app federated-credential create \
+  --id <appId> \
+  --parameters '{
+    "name": "github-ipcalc-main",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:<your-org>/<your-repo>:ref:refs/heads/main",
+    "audiences": ["api://AzureADTokenExchange"]
+  }'
+
+# For pull request triggers (if the workflow runs on PRs)
+az ad app federated-credential create \
+  --id <appId> \
+  --parameters '{
+    "name": "github-ipcalc-pr",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:<your-org>/<your-repo>:pull_request",
+    "audiences": ["api://AzureADTokenExchange"]
+  }'
+```
+
+Replace `<your-org>/<your-repo>` with your actual GitHub repository path (e.g. `acme/ipcalc`).
+
+> **For environment-based deployments** use `repo:<org>/<repo>:environment:<name>` as the subject instead.
+
+#### Step 4 — Assign a Minimal RBAC Role
+
+The workflow needs to create resource groups, deploy ARM templates, and manage VNets. Rather than the broad **Contributor** role, assign a least-privilege custom role:
+
+```bash
+# Create the custom role definition
+az role definition create --role-definition '{
+  "Name": "jvh-ipcalc-role",
+  "Description": "Minimal permissions to deploy VNets and resource groups for ipcalc CI",
+  "Actions": [
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/write",
+    "Microsoft.Resources/subscriptions/resourceGroups/delete",
+    "Microsoft.Resources/deployments/read",
+    "Microsoft.Resources/deployments/write",
+    "Microsoft.Resources/deployments/delete",
+    "Microsoft.Resources/deployments/validate/action",
+    "Microsoft.Resources/deployments/operationStatuses/read",
+    "Microsoft.Network/virtualNetworks/read",
+    "Microsoft.Network/virtualNetworks/write",
+    "Microsoft.Network/virtualNetworks/delete",
+    "Microsoft.Network/virtualNetworks/subnets/read",
+    "Microsoft.Network/virtualNetworks/subnets/write",
+    "Microsoft.Network/virtualNetworks/subnets/delete"
+  ],
+  "AssignableScopes": ["/subscriptions/<subscription-id>"]
+}'
+
+# Assign the role to the service principal at subscription scope
+az role assignment create \
+  --assignee <appId> \
+  --role "jvh-ipcalc-role" \
+  --scope /subscriptions/590be515-152e-431c-b10e-5e98bc348a5a
+```
+
+> **Why subscription scope?** The workflow generates a unique resource group per run. Locking the role to a pre-existing resource group would prevent resource group creation. Scope the role to a dedicated subscription or management group to limit blast radius.
+
+#### Step 5 — Store Three Secrets in GitHub
+
+No client secret is needed. Store these three values:
+
+| Secret Name | Value |
+|---|---|
+| `AZURE_CLIENT_ID` | `appId` from Step 1 |
+| `AZURE_TENANT_ID` | Your Azure AD tenant ID (`az account show --query tenantId -o tsv`) |
+| `AZURE_SUBSCRIPTION_ID` | Your subscription ID (`az account show --query id -o tsv`) |
+
+Go to **Settings** → **Secrets and variables** → **Actions** → **New repository secret** for each.
+
+#### Step 6 — Update the Workflow File
+
+The workflow must request the `id-token: write` permission and use the three individual secrets instead of `AZURE_CREDENTIALS`:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write   # Required for OIDC token request
+
+# In the Azure Login step:
+- name: Azure Login
+  uses: azure/login@v2
+  with:
+    client-id: ${{ secrets.AZURE_CLIENT_ID }}
+    tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+    subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+```
+
+Remove any reference to `secrets.AZURE_CREDENTIALS`.
 
 ### 2. Environment Variables (Optional)
 
@@ -288,7 +372,27 @@ To customize the workflow behavior:
 
 **Problem:** `ERROR: AADSTS700016: Application not found`
 
-**Solution:** Verify your `AZURE_CREDENTIALS` secret is correctly formatted and the service principal exists.
+**Solution:** Verify `AZURE_CLIENT_ID` matches the `appId` of the App Registration and that a service principal was created for it (`az ad sp show --id <appId>`).
+
+**Problem:** `AADSTS70021: No matching federated identity record found`
+
+**Solution:** The federated credential subject must exactly match the GitHub Actions context:
+- For `push` to main: `repo:<org>/<repo>:ref:refs/heads/main`
+- For `pull_request`: `repo:<org>/<repo>:pull_request`
+- For `workflow_dispatch`: `repo:<org>/<repo>:ref:refs/heads/<branch>`
+
+Check your registered credentials with:
+```bash
+az ad app federated-credential list --id <appId>
+```
+
+**Problem:** `AuthorizationFailed` when creating resource groups or VNets
+
+**Solution:** Verify the role assignment exists and includes the required actions:
+```bash
+az role assignment list --assignee <appId> --output table
+az role definition show --name "ipcalc-vnet-deployer" --query permissions
+```
 
 ### Resource Already Exists
 
@@ -328,10 +432,11 @@ az group delete --name <resource-group-name> --yes
 
 ## Security Best Practices
 
-1. **Least Privilege**: Service principal should only have Contributor role on specific resource groups if possible
-2. **Credential Rotation**: Regularly rotate the service principal secret
-3. **Branch Protection**: Limit who can trigger the workflow on your main branch
-4. **Review Logs**: Regularly review workflow logs for suspicious activity
+1. **No Long-Lived Secrets**: OIDC issues short-lived tokens per workflow run — there is no client secret to rotate, leak, or expire unexpectedly.
+2. **Least Privilege**: Use the custom `ipcalc-vnet-deployer` role rather than built-in Contributor. It grants only the operations this workflow actually performs.
+3. **Federated Credential Subjects**: Lock each federated credential to the narrowest possible subject (`ref:refs/heads/main`, specific environments) so tokens cannot be minted by forks or arbitrary branches.
+4. **Branch Protection**: Require PR review and status checks on `main` to control who can trigger deployments.
+5. **Review Logs**: Monitor Azure Activity Logs and GitHub Actions logs for unexpected authentication or deployment activity.
 
 ## Future Enhancements
 
