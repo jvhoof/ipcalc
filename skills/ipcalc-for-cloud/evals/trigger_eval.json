@@ -1,0 +1,82 @@
+[
+  {
+    "query": "I need to plan the subnets for a new Azure landing zone. Base CIDR is 10.0.0.0/16 and I need 6 subnets. Can you calculate the ranges and tell me how many usable IPs each one has?",
+    "should_trigger": true
+  },
+  {
+    "query": "generate terraform for an aws vpc, cidr 172.16.0.0/12, need 4 subnets distributed across availability zones in eu-west-1",
+    "should_trigger": true
+  },
+  {
+    "query": "we're migrating to GCP and I need to plan the VPC network layout. base range is 192.168.0.0/20, 3 subnets needed, output as gcloud commands so I can run them",
+    "should_trigger": true
+  },
+  {
+    "query": "how many usable IPs do I get in a /26 on Azure? I keep forgetting how many addresses Azure reserves per subnet",
+    "should_trigger": true
+  },
+  {
+    "query": "plan a hub-and-spoke vnet topology for azure - hub is 10.0.0.0/16 with 2 subnets, 3 spokes at 10.1.0.0/16, 10.2.0.0/16, 10.3.0.0/16 each with 2 subnets. output bicep pls",
+    "should_trigger": true
+  },
+  {
+    "query": "setting up oracle cloud infra for a client. they want a VCN with cidr 10.10.0.0/16 and 8 subnets spread across ADs. give me the terraform",
+    "should_trigger": true
+  },
+  {
+    "query": "I have 10.0.0.0/8 for our alicloud vpc in cn-shanghai. need 12 vswitches distributed across zones, prefix /24 each. whats the allocation?",
+    "should_trigger": true
+  },
+  {
+    "query": "need to split 192.168.50.0/24 into subnets for a small on-prem network at our office. we need 4 segments. what are the CIDRs and how many hosts per subnet?",
+    "should_trigger": true
+  },
+  {
+    "query": "boss wants a cloudformation template for our new aws prod account. vpc 10.50.0.0/16, 6 subnets, we deploy in us-east-1. need it ready to stack-deploy",
+    "should_trigger": true
+  },
+  {
+    "query": "can you work out the subnet plan for a new aws vpc 10.100.0.0/16? want subnets no bigger than /24 and we need at least 10 of them across 3 AZs",
+    "should_trigger": true
+  },
+  {
+    "query": "how do i set up NSG rules in azure so that subnet A (10.0.1.0/24) can reach subnet B (10.0.2.0/24) on port 5432 but not the other way around?",
+    "should_trigger": false
+  },
+  {
+    "query": "I already have a VPC at 10.0.0.0/16 in us-east-1a. Just write me terraform to add one new subnet 10.0.9.0/24 to it - the CIDR is already decided, I just need the resource block",
+    "should_trigger": false
+  },
+  {
+    "query": "my gke cluster can't pull images from artifact registry - getting a network error. the cluster is in us-central1 and private. what's the likely cause?",
+    "should_trigger": false
+  },
+  {
+    "query": "write a terraform module for an azure application gateway with WAF v2 in prevention mode, backend pool pointing at 10.0.1.4 and 10.0.1.5",
+    "should_trigger": false
+  },
+  {
+    "query": "what is CIDR notation and how does it work? i'm new to networking and keep seeing things like /24 or /16 but don't understand what the number means",
+    "should_trigger": false
+  },
+  {
+    "query": "I need to add VPC peering between two existing VPCs - vpc-aaa (10.0.0.0/16) and vpc-bbb (172.31.0.0/16) - in different regions. write me the terraform for that",
+    "should_trigger": false
+  },
+  {
+    "query": "our azure vm in subnet 10.0.2.0/24 can't reach the internet. route table looks fine, NSG seems open. how do I troubleshoot this?",
+    "should_trigger": false
+  },
+  {
+    "query": "I have an ARM template for an existing vnet and subnets (the cidrs are already set). convert it to bicep for me",
+    "should_trigger": false
+  },
+  {
+    "query": "quickly, what's the network address and broadcast address of 192.168.10.64/26? just need those two values",
+    "should_trigger": false
+  },
+  {
+    "query": "we're setting up transit gateway in aws to connect 4 vpcs. the VPCs already exist with their CIDRs assigned. I just need the TGW attachment and route table terraform",
+    "should_trigger": false
+  }
+]

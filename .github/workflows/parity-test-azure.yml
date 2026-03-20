@@ -27,12 +27,6 @@ on:
       - 'skills/ipcalc-for-cloud/templates/azure/**'
       - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
       - '.github/workflows/parity-test-azure.yml'
-  pull_request:
-    paths:
-      - 'src/templates/azure/**'
-      - 'skills/ipcalc-for-cloud/templates/azure/**'
-      - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
-      - '.github/workflows/parity-test-azure.yml'
 
 env:
   HUB_CIDR: ${{ github.event.inputs.cidr || '10.0.0.0/16' }}

@@ -26,11 +26,6 @@ on:
       - 'skills/ipcalc-for-cloud/scripts/**'
       - 'skills/ipcalc-for-cloud/templates/aws/**'
       - '.github/workflows/network-test-aws-vpc-python-skill.yml'
-  pull_request:
-    paths:
-      - 'skills/ipcalc-for-cloud/scripts/**'
-      - 'skills/ipcalc-for-cloud/templates/aws/**'
-      - '.github/workflows/network-test-aws-vpc-python-skill.yml'
 
 env:
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.AWS_RESOURCE_PREFIX || 'ipcalc-test' }}

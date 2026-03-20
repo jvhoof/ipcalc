@@ -25,10 +25,6 @@ on:
     paths-ignore:
       - '.github/workflows/**'
       - 'skills/**'
-  pull_request:
-    paths:
-      - 'src/templates/azure/**'
-      - '.github/workflows/azure-vnet-test.yml'
 
 env:
   # Workflow parameters - workflow_dispatch inputs take precedence over env vars

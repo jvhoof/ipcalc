@@ -8,10 +8,6 @@ on:
     paths:
       - 'skills/ipcalc-for-cloud/scripts/**'
       - '.github/workflows/test-ipcalc-skill.yml'
-  pull_request:
-    paths:
-      - 'skills/ipcalc-for-cloud/scripts/**'
-      - '.github/workflows/test-ipcalc-skill.yml'
 
 jobs:
   skill-unit-test:

@@ -19,12 +19,6 @@ on:
       - 'skills/ipcalc-for-cloud/templates/aws/**'
       - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
       - '.github/workflows/parity-test-aws.yml'
-  pull_request:
-    paths:
-      - 'src/templates/aws/**'
-      - 'skills/ipcalc-for-cloud/templates/aws/**'
-      - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
-      - '.github/workflows/parity-test-aws.yml'
 
 env:
   VPC_CIDR: ${{ github.event.inputs.cidr || '10.0.0.0/16' }}

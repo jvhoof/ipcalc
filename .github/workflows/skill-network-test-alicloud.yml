@@ -26,11 +26,6 @@ on:
       - 'skills/ipcalc-for-cloud/scripts/**'
       - 'skills/ipcalc-for-cloud/templates/alicloud/**'
       - '.github/workflows/skill-network-test-alicloud.yml'
-  pull_request:
-    paths:
-      - 'skills/ipcalc-for-cloud/scripts/**'
-      - 'skills/ipcalc-for-cloud/templates/alicloud/**'
-      - '.github/workflows/skill-network-test-alicloud.yml'
 
 env:
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.ALICLOUD_RESOURCE_PREFIX || 'ipcalc-test' }}
