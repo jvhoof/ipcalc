@@ -57,7 +57,7 @@ jobs:
           echo "Generated unique ID: $UNIQUE_ID"
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -256,7 +256,7 @@ jobs:
           echo "Generated unique ID: $UNIQUE_ID"
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -439,7 +439,7 @@ jobs:
           echo "Generated unique ID: $UNIQUE_ID"
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -690,7 +690,7 @@ jobs:
           echo "Generated unique ID: $UNIQUE_ID"
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -880,7 +880,7 @@ jobs:
           echo "Generated unique ID: $UNIQUE_ID"
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -1081,7 +1081,7 @@ jobs:
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -1202,7 +1202,7 @@ jobs:
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -1352,7 +1352,7 @@ jobs:
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -1479,7 +1479,7 @@ jobs:
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -1612,7 +1612,7 @@ jobs:
           echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
