@@ -106,7 +106,7 @@
       </v-menu>
     </v-bottom-navigation>
 
-    <AboutDialog ref="aboutDialog" />
+    <AboutScreen ref="aboutDialog" />
   </v-app>
 </template>
 
@@ -118,7 +118,7 @@ import AwsCalculator from './components/AwsCalculator.vue'
 import GcpCalculator from './components/GcpCalculator.vue'
 import OracleCalculator from './components/OracleCalculator.vue'
 import AlicloudCalculator from './components/AlicloudCalculator.vue'
-import AboutDialog from './components/AboutDialog.vue'
+import AboutScreen from './components/AboutScreen.vue'
 import {
   getBackgroundColor,
   getTitleColor,
@@ -129,7 +129,7 @@ import {
 // Default active tab - change this to set the default cloud provider
 const activeTab = ref<string>('on-premises')
 
-const aboutDialog = ref<InstanceType<typeof AboutDialog> | null>(null)
+const aboutDialog = ref<InstanceType<typeof AboutScreen> | null>(null)
 
 // Dark mode state - will be set based on system preference
 const isDarkMode = ref<boolean>(false)
