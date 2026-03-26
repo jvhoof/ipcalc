@@ -7,48 +7,47 @@ on:
             - main
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: 'write' # Required to fetch GitHub OIDC tokens
-    steps:
-      - name: Set up Node.js
-        uses: actions/setup-node@v4.0.3
-        with:
-          node-version: '20'
+    build:
+    runs-on: ubuntu-latest
+    permissions:
+    id-token: 'write' # Required to fetch GitHub OIDC tokens
 
-      - name: Install OCI CLI
-        run: |
-          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
-          echo "$HOME/bin" >> $GITHUB_PATH # Add OCI CLI to PATH
-        shell: bash
+    steps:
+        - name: Set up Node.js
+          uses: actions/setup-node@v4.0.3
+          with:
+                node-version: '20'
 
-      - name: Run OCI Token Exchange Action (Account 1)
-        uses: gtrevorrow/oci-token-exchange-action@v1
-        with:
-          oidc_client_identifier: ${{secrets.OIDC_CLIENT_IDENTIFIER_ACCT1}} # Secret for Account 1's OAuth Client ID:Secret
-          domain_base_url: ${{vars.DOMAIN_BASE_URL_ACCT1}} # Variable for Account 1's Identity Domain URL
-          oci_tenancy: ${{vars.OCI_TENANCY_ACCT1}} # Variable for Account 1's Tenancy OCID
-          oci_region: ${{vars.OCI_REGION_ACCT1}} # Variable for Account 1's OCI Region
-          oci_profile: 'ACCOUNT_1_PROFILE' # Creates/updates profile 'ACCOUNT_1_PROFILE'
+        - name: Install OCI CLI
+          run: |
+            curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
+            echo "$HOME/bin" >> $GITHUB_PATH # Add OCI CLI to PATH
+          shell : bash
 
-      - name: Run OCI CLI Command (Account 1)
-        shell: bash
-        # Using --profile to target the specific account configuration
-        run: |
-          oci --auth security_token --profile ACCOUNT_1_PROFILE os ns get
+        - name: Run OCI Token Exchange Action (Account 1)
+          uses: gtrevorrow/oci-token-exchange-action@v1
+          with:
+              oidc_client_identifier: ${{secrets.OIDC_CLIENT_IDENTIFIER_ACCT1}} # Secret for Account 1's OAuth Client ID:Secret
+              domain_base_url: ${{vars.DOMAIN_BASE_URL_ACCT1}} # Variable for Account 1's Identity Domain URL
+              oci_tenancy: ${{vars.OCI_TENANCY_ACCT1}} # Variable for Account 1's Tenancy OCID
+              oci_region: ${{vars.OCI_REGION_ACCT1}} # Variable for Account 1's OCI Region
+              oci_profile: 'ACCOUNT_1_PROFILE' # Creates/updates profile 'ACCOUNT_1_PROFILE'
 
-      - name: Run OCI Token Exchange Action (Account 2)
-        uses: gtrevorrow/oci-token-exchange-action@v1
-        with:
-          oidc_client_identifier: ${{secrets.OIDC_CLIENT_IDENTIFIER_ACCT2}} # Secret for Account 2's OAuth Client ID:Secret
-          domain_base_url: ${{vars.DOMAIN_BASE_URL_ACCT2}} # Variable for Account 2's Identity Domain URL
-          oci_tenancy: ${{vars.OCI_TENANCY_ACCT2}} # Variable for Account 2's Tenancy OCID
-          oci_region: ${{vars.OCI_REGION_ACCT2}} # Variable for Account 2's OCI Region
-          oci_profile: 'ACCOUNT_2_PROFILE' # Creates/updates profile 'ACCOUNT_2_PROFILE'
+        - name: Run OCI CLI Command (Account 1)
+          shell: bash # Using --profile to target the specific account configuration
+            run: |
+                oci --auth security_token --profile ACCOUNT_1_PROFILE os ns get
 
-      - name: Run OCI CLI Command (Account 2)
-        shell: bash
-        # Using --profile to target the specific account configuration
-        run: |
-          oci --auth security_token --profile ACCOUNT_2_PROFILE os ns get
+        - name: Run OCI Token Exchange Action (Account 2)
+          uses: gtrevorrow/oci-token-exchange-action@v1
+            with:
+                oidc_client_identifier: ${{secrets.OIDC_CLIENT_IDENTIFIER_ACCT2}} # Secret for Account 2's OAuth Client ID:Secret
+                domain_base_url: ${{vars.DOMAIN_BASE_URL_ACCT2}} # Variable for Account 2's Identity Domain URL
+                oci_tenancy: ${{vars.OCI_TENANCY_ACCT2}} # Variable for Account 2's Tenancy OCID
+                oci_region: ${{vars.OCI_REGION_ACCT2}} # Variable for Account 2's OCI Region
+                oci_profile: 'ACCOUNT_2_PROFILE' # Creates/updates profile 'ACCOUNT_2_PROFILE'
+
+        - name: Run OCI CLI Command (Account 2)
+          shell: bash # Using --profile to target the specific account configuration
+         run: |
+            oci --auth security_token --profile ACCOUNT_2_PROFILE os ns get
