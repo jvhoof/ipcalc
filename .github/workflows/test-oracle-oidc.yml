@@ -31,7 +31,6 @@ jobs:
           domain_base_url: ${{secrets.DOMAIN_BASE_URL}} # Variable for Account 1's Identity Domain URL
           oci_tenancy: ${{secrets.OCI_TENANCY}} # Variable for Account 1's Tenancy OCID
           oci_region: ${{secrets.OCI_REGION}} # Variable for Account 1's OCI Region
-          oci_profile: 'ACCOUNT_1_PROFILE' # Creates/updates profile 'ACCOUNT_1_PROFILE'
 
       - name: Run OCI CLI Command (Account 1)
         shell: bash # Using --profile to target the specific account configuration
