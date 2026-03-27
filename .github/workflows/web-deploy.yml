@@ -32,7 +32,14 @@ jobs:
       # Step 4: Build the Vue application
       - name: Build application
         run: npm run build
-      
+
+      # Step 4b: Inject analytics snippet
+      - name: Inject analytics snippet
+        env:
+          ANALYTICS: ${{ secrets.ANALYTICS }}
+        run: |
+          sed -i "s|<!-- ANALYTICS -->|$ANALYTICS" dist/index.html
+
       # Step 5: Setup SSH key
       - name: Setup SSH key
         run: |
