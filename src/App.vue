@@ -19,6 +19,39 @@
       </v-container>
     </v-main>
 
+    <!-- Top-right icon buttons -->
+    <div class="top-right-actions">
+      <!-- Mobile-only toggle button -->
+      <v-btn
+        icon
+        class="action-btn d-md-none"
+        :style="{ backgroundColor: actionBtnBgColor, color: actionBtnIconColor }"
+        @click="showMobileActions = !showMobileActions"
+      >
+        <v-icon>mdi-dots-horizontal</v-icon>
+      </v-btn>
+
+      <!-- Stacked actions: always visible on md+, toggled on mobile -->
+      <div class="actions-stack" :class="{ 'actions-open': showMobileActions }">
+        <v-btn
+          icon
+          class="action-btn"
+          :style="{ backgroundColor: actionBtnBgColor, color: actionBtnIconColor }"
+          @click="toggleDarkMode"
+        >
+          <v-icon>{{ isDarkMode ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
+        </v-btn>
+        <v-btn
+          icon
+          class="action-btn"
+          :style="{ backgroundColor: actionBtnBgColor, color: actionBtnIconColor }"
+          @click="() => { aboutDialog?.open(); showMobileActions = false }"
+        >
+          <v-icon>mdi-information-outline</v-icon>
+        </v-btn>
+      </div>
+    </div>
+
     <!-- Bottom Navigation - Responsive -->
     <v-bottom-navigation
       v-model="activeTab"
@@ -82,28 +115,6 @@
         </v-list>
       </v-menu>
 
-      <!-- Options menu (always visible) -->
-      <v-menu location="top">
-        <template v-slot:activator="{ props }">
-          <v-btn v-bind="props" class="nav-btn" :style="{ color: navBarTextColor }">
-            <v-icon :style="{ color: navBarTextColor }">mdi-dots-horizontal</v-icon>
-          </v-btn>
-        </template>
-        <v-list>
-          <v-list-item @click="toggleDarkMode">
-            <template v-slot:prepend>
-              <v-icon>{{ isDarkMode ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
-            </template>
-            <v-list-item-title>{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</v-list-item-title>
-          </v-list-item>
-          <v-list-item @click="aboutDialog?.open()">
-            <template v-slot:prepend>
-              <v-icon>mdi-information-outline</v-icon>
-            </template>
-            <v-list-item-title>About</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
     </v-bottom-navigation>
 
     <AboutScreen ref="aboutDialog" />
@@ -198,6 +209,14 @@ const navBarBackgroundColor = computed(() => {
 const navBarTextColor = computed(() => {
   return getNavBarTextColor(isDarkMode.value)
 })
+
+const showMobileActions = ref(false)
+
+const actionBtnIconColor = computed(() => currentTitleColor.value)
+
+const actionBtnBgColor = computed(() =>
+  isDarkMode.value ? '#212121' : 'rgba(0,0,0,0.25)'
+)
 </script>
 
 <style scoped>
@@ -213,6 +232,39 @@ const navBarTextColor = computed(() => {
   white-space: nowrap;
   overflow: visible;
   padding: 0 0.5rem;
+}
+
+/* Top-right action buttons */
+.top-right-actions {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 1001;
+}
+
+.actions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Hide stacked actions on mobile until toggled */
+@media (max-width: 959px) {
+  .actions-stack {
+    display: none;
+  }
+  .actions-stack.actions-open {
+    display: flex;
+  }
+}
+
+.action-btn {
+  border-radius: 50% !important;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Ensure bottom navigation is fully visible */
