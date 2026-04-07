@@ -12,14 +12,14 @@
       </h1>
 
       <p class="about-text mb-4" style="color: #FFFFFF; max-width: 480px;">
-        IP Calculator is an open-source tool for calculating IP ranges, CIDR blocks,
-        and subnet allocations for cloud networks including Azure, AWS, GCP, Oracle Cloud,
+        IP Calculator is an open-source tool for calculating CIDR ranges for on-premises networks. 
+        It extends into public cloud networking Azure, AWS, GCP, Oracle Cloud,
         and Alibaba Cloud.
       </p>
 
       <p class="about-text mb-8" style="color: #FFFFFF; max-width: 480px;">
-        It supports single VNet/VPC and hub-spoke topologies, and can generate
-        infrastructure as code templates for Terraform, Bicep, ARM, CloudFormation, and more.
+        In public cloud, the tool helps with different basic network topologies such as single VNET/VPC 
+        and hub-spoke topologies. It generates infrastructure as code templates or scripts. 
       </p>
 
       <div class="d-flex align-center gap-4 mb-8">

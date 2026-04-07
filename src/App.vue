@@ -45,7 +45,7 @@
           icon
           class="action-btn"
           :style="{ backgroundColor: actionBtnBgColor, color: actionBtnIconColor }"
-          @click="() => { aboutDialog?.open(); showMobileActions = false }"
+          @click="() => { aboutScreen?.open(); showMobileActions = false }"
         >
           <v-icon>mdi-information-outline</v-icon>
         </v-btn>
@@ -117,7 +117,7 @@
 
     </v-bottom-navigation>
 
-    <AboutScreen ref="aboutDialog" />
+    <AboutScreen ref="aboutScreen" />
   </v-app>
 </template>
 
@@ -140,7 +140,7 @@ import {
 // Default active tab - change this to set the default cloud provider
 const activeTab = ref<string>('on-premises')
 
-const aboutDialog = ref<InstanceType<typeof AboutScreen> | null>(null)
+const aboutScreen = ref<InstanceType<typeof AboutScreen> | null>(null)
 
 // Dark mode state - will be set based on system preference
 const isDarkMode = ref<boolean>(false)
