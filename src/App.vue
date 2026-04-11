@@ -49,6 +49,14 @@
         >
           <v-icon>mdi-information-outline</v-icon>
         </v-btn>
+        <v-btn
+          icon
+          class="action-btn"
+          :style="{ backgroundColor: actionBtnBgColor, color: actionBtnIconColor }"
+          @click="() => { skillsScreen?.open(); showMobileActions = false }"
+        >
+          <v-icon>mdi-star</v-icon>
+        </v-btn>
       </div>
     </div>
 
@@ -118,6 +126,7 @@
     </v-bottom-navigation>
 
     <AboutScreen ref="aboutScreen" />
+    <SkillsScreen ref="skillsScreen" />
   </v-app>
 </template>
 
@@ -130,6 +139,7 @@ import GcpCalculator from './components/GcpCalculator.vue'
 import OracleCalculator from './components/OracleCalculator.vue'
 import AlicloudCalculator from './components/AlicloudCalculator.vue'
 import AboutScreen from './components/AboutScreen.vue'
+import SkillsScreen from './components/SkillsScreen.vue'
 import {
   getBackgroundColor,
   getTitleColor,
@@ -141,6 +151,7 @@ import {
 const activeTab = ref<string>('on-premises')
 
 const aboutScreen = ref<InstanceType<typeof AboutScreen> | null>(null)
+const skillsScreen = ref<InstanceType<typeof SkillsScreen> | null>(null)
 
 // Dark mode state - will be set based on system preference
 const isDarkMode = ref<boolean>(false)
