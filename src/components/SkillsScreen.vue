@@ -7,9 +7,13 @@
     no-click-animation
   >
     <div class="skills-content d-flex flex-column align-center justify-center text-center px-6">
-      <h1 class="skills-title font-weight-bold mb-6" style="font-family: Roboto, sans-serif; color: #FFFFFF;">
-        IPCALC FOR CLOUD
+      <h1 class="skills-title font-weight-bold mb-2" style="font-family: Roboto, sans-serif; color: #FFFFFF;">
+        IP CALCULATOR
       </h1>
+
+      <p class="skills-subtitle mb-6" style="color: rgba(255,255,255,0.75); font-family: Roboto, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; font-size: 0.85rem;">
+        agentic skill
+      </p>
 
       <p class="skills-text mb-4" style="color: #FFFFFF; max-width: 520px;">
         A Claude Code skill that brings AI-assisted IP calculation directly into your workflow.
