@@ -34,27 +34,27 @@
       <!-- Stacked actions: always visible on md+, toggled on mobile -->
       <div class="actions-stack" :class="{ 'actions-open': showMobileActions }">
         <v-btn
-          icon
           class="action-btn"
           :style="{ backgroundColor: actionBtnBgColor, color: actionBtnIconColor }"
           @click="toggleDarkMode"
         >
+          <span class="action-btn-label">{{ isDarkMode ? 'light' : 'night' }}</span>
           <v-icon>{{ isDarkMode ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
         </v-btn>
         <v-btn
-          icon
           class="action-btn"
           :style="{ backgroundColor: actionBtnBgColor, color: actionBtnIconColor }"
           @click="() => { aboutScreen?.open(); showMobileActions = false }"
         >
+          <span class="action-btn-label">about</span>
           <v-icon>mdi-information-outline</v-icon>
         </v-btn>
         <v-btn
-          icon
           class="action-btn"
           :style="{ backgroundColor: actionBtnBgColor, color: actionBtnIconColor }"
           @click="() => { skillsScreen?.open(); showMobileActions = false }"
         >
+          <span class="action-btn-label">agent skill</span>
           <v-icon>mdi-star</v-icon>
         </v-btn>
       </div>
@@ -260,6 +260,7 @@ const actionBtnBgColor = computed(() =>
 .actions-stack {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
 }
 
@@ -274,8 +275,32 @@ const actionBtnBgColor = computed(() =>
 }
 
 .action-btn {
-  border-radius: 50% !important;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  border-radius: 20px !important;
+  min-width: 40px !important;
+  height: 40px !important;
+  padding: 0 8px !important;
+  overflow: hidden !important;
+  transition: min-width 0.3s ease, background-color 0.3s ease, color 0.3s ease !important;
+}
+
+.action-btn-label {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  margin-right: 0;
+  transition: max-width 0.3s ease, opacity 0.2s ease, margin-right 0.3s ease;
+}
+
+@media (hover: hover) {
+  .action-btn:hover .action-btn-label {
+    max-width: 100px;
+    opacity: 1;
+    margin-right: 6px;
+  }
 }
 
 /* Ensure bottom navigation is fully visible */
