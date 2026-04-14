@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.abspath(_SCRIPTS_DIR))
 
 from ipcalc import calculate_subnets, generate_hub_spoke_topology  # noqa: E402
 from template_processor import process_template  # noqa: E402
+from diagram_generator import AzureDiagramGenerator  # noqa: E402
 
 TEMPLATES_DIR = os.path.abspath(_TEMPLATES_DIR)
 
@@ -39,6 +40,7 @@ AZURE_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
     'bicep':          ('text/plain',         'main.bicep'),
     'arm':            ('application/json',   'azuredeploy.json'),
     'powershell':     ('text/plain',         'deploy.ps1'),
+    'd2':             ('text/plain',         'diagram.d2'),
 }
 
 AWS_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
@@ -273,10 +275,13 @@ def generate_azure(
         'spokeVNets': spoke_vnets,
     }
 
-    try:
-        code = process_template('azure', format, data, TEMPLATES_DIR)
-    except (FileNotFoundError, NotImplementedError) as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    if format == 'd2':
+        code = AzureDiagramGenerator().generate(data)
+    else:
+        try:
+            code = process_template('azure', format, data, TEMPLATES_DIR)
+        except (FileNotFoundError, NotImplementedError) as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
 
     content_type, filename = AZURE_FORMAT_CONFIG[format]
     return Response(

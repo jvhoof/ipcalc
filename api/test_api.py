@@ -314,3 +314,66 @@ class TestAzure:
         })
         assert resp.status_code == 200
         assert 'azurerm_virtual_network_peering' in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Azure – D2 diagram
+# ---------------------------------------------------------------------------
+
+class TestAzureD2:
+    def test_single_vnet_status(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'd2'})
+        assert resp.status_code == 200
+
+    def test_single_vnet_content_type(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'd2'})
+        assert 'text/plain' in resp.headers['content-type']
+
+    def test_single_vnet_filename_header(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'd2'})
+        assert 'diagram.d2' in resp.headers['content-disposition']
+
+    def test_single_vnet_d2_structure(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'd2'})
+        assert resp.status_code == 200
+        body = resp.text
+        assert 'classes:' in body
+        assert 'resource_group' in body
+        assert 'vnet' in body
+        assert 'direction: right' in body
+
+    def test_single_vnet_cidr_in_output(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'd2'})
+        assert '10.0.0.0/16' in resp.text
+
+    def test_single_vnet_subnet_count(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'd2'})
+        body = resp.text
+        # Each subnet block appears as "subnet{n}:"
+        for i in range(1, 5):
+            assert f'subnet{i}:' in body
+
+    def test_hub_spoke_peering_edges(self):
+        resp = client.get('/api/azure', params={
+            'cidr': '10.0.0.0/16',
+            'subnets': 2,
+            'format': 'd2',
+            'spoke-cidrs': '10.1.0.0/16,10.2.0.0/16',
+            'spoke-subnets': '2,2',
+        })
+        assert resp.status_code == 200
+        body = resp.text
+        assert 'hub_rg' in body
+        assert 'spoke1_rg' in body
+        assert 'spoke2_rg' in body
+        assert '<->' in body
+
+    def test_hub_spoke_spoke_cidrs_in_output(self):
+        resp = client.get('/api/azure', params={
+            'cidr': '10.0.0.0/16',
+            'subnets': 2,
+            'format': 'd2',
+            'spoke-cidrs': '10.1.0.0/16',
+            'spoke-subnets': '2',
+        })
+        assert '10.1.0.0/16' in resp.text
