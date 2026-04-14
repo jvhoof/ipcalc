@@ -159,17 +159,23 @@ class AzureDiagramGenerator:
         cidr: str,
         subnets: list[dict[str, Any]],
     ) -> str:
-        icon_url = f"{self.ICON_BASE_URL}/{self._ICON_PATHS['vnet']}"
+        # D2 does not allow shape:image on a node that has children, so the
+        # VNet is a plain styled container. Subnets are leaf nodes with icons.
+        icon_url = f"{self.ICON_BASE_URL}/{self._ICON_PATHS['subnet']}"
         lines = [
             f"{vnet_id}: \"{label}\" {{",
             "  class: vnet",
-            "  shape: image",
-            f"  icon: {icon_url}",
         ]
         for subnet in subnets:
             subnet_id = self._sanitize_id(subnet["name"])
             subnet_label = self._subnet_label(subnet)
-            lines.append(f"  {subnet_id}: \"{subnet_label}\" {{ class: subnet }}")
+            lines.append(
+                f"  {subnet_id}: \"{subnet_label}\" {{\n"
+                f"    class: subnet\n"
+                f"    shape: image\n"
+                f"    icon: {icon_url}\n"
+                f"  }}"
+            )
         lines.append("}")
         return "\n".join(lines) + "\n"
 

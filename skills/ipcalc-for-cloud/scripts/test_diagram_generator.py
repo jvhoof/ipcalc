@@ -83,9 +83,10 @@ class TestAzureDiagramGeneratorSingleVNet(unittest.TestCase):
         self.assertIn("shape: image", self.output)
         self.assertIn("10.0.0.0/16", self.output)
 
-    def test_vnet_icon_url(self):
+    def test_subnet_icon_url(self):
+        # VNets are containers (no icon allowed); subnets carry the icon instead
         self.assertIn("miiitch/skill-diagram-generators", self.output)
-        self.assertIn("Virtual-Networks.png", self.output)
+        self.assertIn("Virtual-Networks-Subnets.png", self.output)
 
     def test_four_subnets_present(self):
         for i in range(1, 5):
