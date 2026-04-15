@@ -10,7 +10,7 @@ on:
       region:
         description: 'OCI region'
         required: false
-        default: 'eu-frankfurt-1'
+        default: 'eu-stockholm-1'
       vcn_cidr:
         description: 'VCN CIDR block'
         required: false
