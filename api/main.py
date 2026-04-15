@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger('ipcalc.api')
@@ -32,6 +33,7 @@ from template_processor import process_template  # noqa: E402
 from diagram_generator import AzureDiagramGenerator  # noqa: E402
 
 TEMPLATES_DIR = os.path.abspath(_TEMPLATES_DIR)
+_ICONS_DIR = os.path.join(os.path.dirname(__file__), 'icons')
 
 # Content-type and suggested filename per output format
 AZURE_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
@@ -172,6 +174,8 @@ def _parse_spoke_subnets(raw: str, expected_count: int) -> list[int]:
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title='ipcalc API', docs_url='/api/docs', redoc_url=None)
+
+app.mount('/api/icons', StaticFiles(directory=os.path.abspath(_ICONS_DIR)), name='icons')
 
 app.add_middleware(
     CORSMiddleware,

@@ -13,16 +13,13 @@ from typing import Any
 class AzureDiagramGenerator:
     """Generates D2 diagram code for Azure networking from ipcalc data."""
 
-    ICON_BASE_URL = (
-        "https://raw.githubusercontent.com/miiitch/skill-diagram-generators"
-        "/refs/heads/main/png/Icons"
-    )
+    ICON_BASE_URL = "/api/icons"
 
     # Icon paths relative to ICON_BASE_URL for the resource types ipcalc produces
     _ICON_PATHS: dict[str, str] = {
-        "vnet":    "networking/10061-icon-service-Virtual-Networks.png",
-        "subnet":  "networking/10063-icon-service-Virtual-Networks-Subnets.png",
-        "peering": "networking/10064-icon-service-Virtual-Network-Peerings.png",
+        "vnet":    "networking/10061-icon-service-Virtual-Networks.svg",
+        "subnet":  "networking/02742-icon-service-Subnet.svg",
+        "peering": "other/01285-icon-service-Peerings.svg",
     }
 
     def generate(self, data: dict[str, Any]) -> str:
