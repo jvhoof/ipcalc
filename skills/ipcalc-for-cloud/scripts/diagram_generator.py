@@ -13,7 +13,10 @@ from typing import Any
 class AzureDiagramGenerator:
     """Generates D2 diagram code for Azure networking from ipcalc data."""
 
-    ICON_BASE_URL = "/api/icons"
+    DEFAULT_ICON_BASE_URL = "https://www.ipcalc.cloud/api/icons"
+
+    def __init__(self, icon_base_url: str | None = None) -> None:
+        self.ICON_BASE_URL = icon_base_url or self.DEFAULT_ICON_BASE_URL
 
     # Icon paths relative to ICON_BASE_URL for the resource types ipcalc produces
     _ICON_PATHS: dict[str, str] = {

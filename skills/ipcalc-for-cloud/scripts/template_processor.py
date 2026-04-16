@@ -1355,39 +1355,50 @@ def process_template(provider: str, output_format: str, data: Dict[str, Any], te
     template_content = load_template(template_path)
 
     # Process template based on provider and format
+    result: str | None = None
     if provider == 'azure':
         if output_format == 'terraform':
-            return process_azure_terraform_template(template_content, data)
+            result = process_azure_terraform_template(template_content, data)
         elif output_format == 'cli':
-            return process_azure_cli_template(template_content, data)
+            result = process_azure_cli_template(template_content, data)
         elif output_format == 'bicep':
-            return process_azure_bicep_template(template_content, data)
+            result = process_azure_bicep_template(template_content, data)
         elif output_format == 'arm':
-            return process_azure_arm_template(template_content, data)
+            result = process_azure_arm_template(template_content, data)
         elif output_format == 'powershell':
-            return process_azure_powershell_template(template_content, data)
+            result = process_azure_powershell_template(template_content, data)
     elif provider == 'aws':
         if output_format == 'terraform':
-            return process_aws_terraform_template(template_content, data)
+            result = process_aws_terraform_template(template_content, data)
         elif output_format == 'cli':
-            return process_aws_cli_template(template_content, data)
+            result = process_aws_cli_template(template_content, data)
         elif output_format == 'cloudformation':
-            return process_aws_cloudformation_template(template_content, data)
+            result = process_aws_cloudformation_template(template_content, data)
     elif provider == 'gcp':
         if output_format == 'terraform':
-            return process_gcp_terraform_template(template_content, data)
+            result = process_gcp_terraform_template(template_content, data)
         elif output_format == 'gcloud':
-            return process_gcp_gcloud_template(template_content, data)
+            result = process_gcp_gcloud_template(template_content, data)
     elif provider == 'oracle':
         if output_format == 'oci':
-            return process_oracle_oci_template(template_content, data)
+            result = process_oracle_oci_template(template_content, data)
         elif output_format == 'terraform':
-            return process_oracle_terraform_template(template_content, data)
-
+            result = process_oracle_terraform_template(template_content, data)
     elif provider == 'alicloud':
         if output_format == 'aliyun':
-            return process_alicloud_aliyun_template(template_content, data)
+            result = process_alicloud_aliyun_template(template_content, data)
         elif output_format == 'terraform':
-            return process_alicloud_terraform_template(template_content, data)
+            result = process_alicloud_terraform_template(template_content, data)
 
-    raise NotImplementedError(f"Template processor not implemented for {provider}/{output_format}")
+    if result is None:
+        raise NotImplementedError(f"Template processor not implemented for {provider}/{output_format}")
+
+    return _apply_name_prefix(result, data)
+
+
+def _apply_name_prefix(content: str, data: Dict[str, Any]) -> str:
+    """Replace the default 'myproject' placeholder with a caller-supplied name prefix."""
+    name_prefix = data.get('namePrefix')
+    if name_prefix:
+        content = content.replace('myproject', name_prefix)
+    return content
