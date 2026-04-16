@@ -11,6 +11,7 @@ RUN cd api && uv sync --frozen --no-dev
 
 # Copy application code
 COPY api/main.py api/
+COPY api/icons/ api/icons/
 
 # Copy skill scripts and templates referenced by the API
 COPY skills/ipcalc-for-cloud/scripts/ skills/ipcalc-for-cloud/scripts/
