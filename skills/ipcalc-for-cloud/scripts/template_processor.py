@@ -893,6 +893,12 @@ def process_gcp_gcloud_template(template_content: str, data: Dict[str, Any]) -> 
             spoke_peering_creation += f'  --peer-network="${{VPC_NAME}}" \\\n'
             spoke_peering_creation += f'  --auto-create-routes\n\n'
 
+            # GCP route propagation after each peering pair must complete before the
+            # next spoke's hub-side peering can be created on the same hub network.
+            if spoke_idx < len(data['spokeVPCs']):
+                spoke_peering_creation += f'echo "Waiting for peering to stabilize before next spoke..."\n'
+                spoke_peering_creation += f'sleep 10\n\n'
+
     # Replace placeholders
     content = content.replace('{{spokeVPCVariables}}', spoke_vpc_variables)
     content = content.replace('{{subnetCreation}}', subnet_creation)
@@ -1015,6 +1021,7 @@ def process_gcp_terraform_template(template_content: str, data: Dict[str, Any]) 
     spoke_outputs = ''
 
     if data.get('peeringEnabled') and data.get('spokeVPCs'):
+        prev_peering_resource = None
         for spoke_idx, spoke in enumerate(data['spokeVPCs'], 1):
             # Add spoke VPC variables
             spoke_vpc_variables += f'\nvariable "spoke{spoke_idx}_cidr" {{\n'
@@ -1065,11 +1072,15 @@ def process_gcp_terraform_template(template_content: str, data: Dict[str, Any]) 
                     spoke_vpc_resources += f'  }}\n'
                     spoke_vpc_resources += f'}}\n'
 
-            # Add peering from hub to spoke
+            # Add peering from hub to spoke.
+            # GCP only allows one peering operation per network at a time, so each
+            # peering resource depends on the previous to force sequential creation.
             spoke_peering_resources += f'\nresource "google_compute_network_peering" "hub_to_spoke{spoke_idx}" {{\n'
             spoke_peering_resources += f'  name         = "hub-to-spoke{spoke_idx}"\n'
             spoke_peering_resources += f'  network      = google_compute_network.vpc.self_link\n'
             spoke_peering_resources += f'  peer_network = google_compute_network.spoke{spoke_idx}_vpc.self_link\n'
+            if prev_peering_resource:
+                spoke_peering_resources += f'  depends_on   = [{prev_peering_resource}]\n'
             spoke_peering_resources += f'}}\n'
 
             # Add peering from spoke to hub
@@ -1077,7 +1088,10 @@ def process_gcp_terraform_template(template_content: str, data: Dict[str, Any]) 
             spoke_peering_resources += f'  name         = "spoke{spoke_idx}-to-hub"\n'
             spoke_peering_resources += f'  network      = google_compute_network.spoke{spoke_idx}_vpc.self_link\n'
             spoke_peering_resources += f'  peer_network = google_compute_network.vpc.self_link\n'
+            spoke_peering_resources += f'  depends_on   = [google_compute_network_peering.hub_to_spoke{spoke_idx}]\n'
             spoke_peering_resources += f'}}\n'
+
+            prev_peering_resource = f'google_compute_network_peering.spoke{spoke_idx}_to_hub'
 
             # Add spoke outputs
             spoke_outputs += f'\noutput "spoke{spoke_idx}_vpc_name" {{\n'
