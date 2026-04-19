@@ -33,10 +33,6 @@ env:
   VNET_CIDR: ${{ github.event.inputs.vnet_cidr || vars.AZURE_VNET_CIDR || '172.16.1.0/24' }}
   SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.AZURE_SUBNET_COUNT || '4' }}
 
-  # Derived environment variables
-  RESOURCE_GROUP: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX || 'ipcalc-test' }}-rg
-  VNET_NAME: ${{ github.event.inputs.prefix || vars.AZURE_RESOURCE_PREFIX || 'ipcalc-test' }}-vnet
-
 permissions:
   contents: read
   id-token: write  # Required for OIDC authentication with Azure

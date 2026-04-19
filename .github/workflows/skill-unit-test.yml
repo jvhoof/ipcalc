@@ -7,7 +7,7 @@ on:
       - main
     paths:
       - 'skills/ipcalc-for-cloud/scripts/**'
-      - '.github/workflows/test-ipcalc-skill.yml'
+      - '.github/workflows/skill-unit-test.yml'
 
 jobs:
   skill-unit-test:
