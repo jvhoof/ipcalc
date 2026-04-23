@@ -936,6 +936,13 @@ export function processGCPGcloudTemplate(templateContent: string, data: Template
       spokePeeringCreation += `  --peer-project="$(gcloud config get-value project)" \\\n`
       spokePeeringCreation += `  --peer-network="\${VPC_NAME}" \\\n`
       spokePeeringCreation += `  --auto-create-routes\n\n`
+
+      // GCP route propagation after each peering pair must complete before the
+      // next spoke's hub-side peering can be created on the same hub network.
+      if (spokeIndex < data.spokeVPCs!.length - 1) {
+        spokePeeringCreation += `echo "Waiting for peering to stabilize before next spoke..."\n`
+        spokePeeringCreation += `sleep 10\n\n`
+      }
     })
   }
 
@@ -1012,6 +1019,7 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
   let spokeVPCResources = ''
   let spokePeeringResources = ''
   let spokeOutputs = ''
+  let prevPeeringResource = ''
 
   if (data.peeringEnabled && data.spokeVPCs && data.spokeVPCs.length > 0) {
     data.spokeVPCs.forEach((spoke, spokeIndex) => {
@@ -1068,11 +1076,16 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
         })
       }
 
-      // Hub to Spoke peering
+      // Hub to Spoke peering.
+      // GCP only allows one peering operation per network at a time, so each
+      // peering resource depends on the previous to force sequential creation.
       spokePeeringResources += `\nresource "google_compute_network_peering" "hub_to_spoke${spokeNum}" {\n`
       spokePeeringResources += `  name         = "hub-to-spoke${spokeNum}"\n`
       spokePeeringResources += `  network      = google_compute_network.vpc.self_link\n`
       spokePeeringResources += `  peer_network = google_compute_network.spoke${spokeNum}_vpc.self_link\n`
+      if (prevPeeringResource) {
+        spokePeeringResources += `  depends_on   = [${prevPeeringResource}]\n`
+      }
       spokePeeringResources += `}\n`
 
       // Spoke to Hub peering
@@ -1080,7 +1093,10 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
       spokePeeringResources += `  name         = "spoke${spokeNum}-to-hub"\n`
       spokePeeringResources += `  network      = google_compute_network.spoke${spokeNum}_vpc.self_link\n`
       spokePeeringResources += `  peer_network = google_compute_network.vpc.self_link\n`
+      spokePeeringResources += `  depends_on   = [google_compute_network_peering.hub_to_spoke${spokeNum}]\n`
       spokePeeringResources += `}\n`
+
+      prevPeeringResource = `google_compute_network_peering.spoke${spokeNum}_to_hub`
 
       // Add spoke VPC outputs
       spokeOutputs += `\noutput "spoke${spokeNum}_vpc_name" {\n`
