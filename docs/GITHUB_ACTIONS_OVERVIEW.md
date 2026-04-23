@@ -2,6 +2,40 @@
 
 This document provides a structured overview of all GitHub Actions workflows for the ipcalc project, grouped by category. Items marked **⚠️ Review** highlight issues worth addressing.
 
+## Status Badges
+
+### CLI Tests
+[![AWS VPC](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-aws-vpc.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-aws-vpc.yml)
+[![Azure VNET](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-azure-vnet.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-azure-vnet.yml)
+[![GCP VPC](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-gcp-vpc.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-gcp-vpc.yml)
+[![AliCloud VSwitch](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-alicloud-vswitch.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-alicloud-vswitch.yml)
+[![OCI VCN](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-oci-vcn.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/cli-test-oci-vcn.yml)
+
+### Parity Tests
+[![Parity AWS](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-aws.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-aws.yml)
+[![Parity Azure](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-azure.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-azure.yml)
+[![Parity GCP](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-gcp.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-gcp.yml)
+[![Parity AliCloud](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-alicloud.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-alicloud.yml)
+
+### Skill Tests
+[![Skill Unit Tests](https://github.com/jvhoof/ipcalc/actions/workflows/skill-unit-test.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/skill-unit-test.yml)
+[![Skill AWS](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-aws.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-aws.yml)
+[![Skill Azure](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-azure.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-azure.yml)
+[![Skill GCP](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-gcp.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-gcp.yml)
+[![Skill AliCloud](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-alicloud.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-alicloud.yml)
+[![Skill OCI](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-oci.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/skill-network-test-oci.yml)
+
+### Web Deploys
+[![Web Deploy](https://github.com/jvhoof/ipcalc/actions/workflows/web-deploy.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/web-deploy.yml)
+[![Web Beta Deploy](https://github.com/jvhoof/ipcalc/actions/workflows/web-beta-deploy.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/web-beta-deploy.yml)
+
+### Other
+[![API Docker Build](https://github.com/jvhoof/ipcalc/actions/workflows/api-docker-build.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/api-docker-build.yml)
+[![FortiCNAPP Daily SCA](https://github.com/jvhoof/ipcalc/actions/workflows/forticnapp-code-security-daily.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/forticnapp-code-security-daily.yml)
+[![FortiCNAPP PR](https://github.com/jvhoof/ipcalc/actions/workflows/forticnapp-code-security-pr.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/forticnapp-code-security-pr.yml)
+[![FortiCNAPP Push](https://github.com/jvhoof/ipcalc/actions/workflows/forticnapp-code-security-push.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/forticnapp-code-security-push.yml)
+[![OCI OIDC Test](https://github.com/jvhoof/ipcalc/actions/workflows/test-oracle-oidc.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/test-oracle-oidc.yml)
+
 ---
 
 ## CLI Tests
@@ -42,8 +76,8 @@ These workflows test the **TypeScript CLI** (`npm run cli`) by generating cloud 
 
 ### CLI Issues to Review
 
-- **⚠️ Hardcoded region** (`cli-test-aws-vpc.yml` line 72): `configure-aws-credentials` uses hardcoded `eu-north-1` instead of `${{ env.AWS_REGION }}`. If a different region is passed via `workflow_dispatch`, credentials are obtained for the wrong region.
-- **⚠️ Static resource naming** (`cli-test-azure-vnet.yml`): `RESOURCE_GROUP` and `VNET_NAME` are set from the prefix alone (no unique ID) in the workflow-level `env` block, while individual jobs generate their own unique IDs. Parallel runs could collide.
+- ~~**⚠️ Hardcoded region** (`cli-test-aws-vpc.yml` line 72): `configure-aws-credentials` uses hardcoded `eu-north-1` instead of `${{ env.AWS_REGION }}`. If a different region is passed via `workflow_dispatch`, credentials are obtained for the wrong region.~~ **Fixed** — `configure-aws-credentials` now uses `${{ env.AWS_REGION }}`.
+- ~~**⚠️ Static resource naming** (`cli-test-azure-vnet.yml`): `RESOURCE_GROUP` and `VNET_NAME` are set from the prefix alone (no unique ID) in the workflow-level `env` block, while individual jobs generate their own unique IDs. Parallel runs could collide.~~ **Fixed** — names are now built with a per-run unique ID (`steps.unique-id.outputs.id`).
 
 ---
 
@@ -95,7 +129,7 @@ These workflows test the **Python skill** (`skills/ipcalc-for-cloud/`). Split in
 - Uploads test report + coverage artifacts (retention: 30 days)
 - Writes coverage percentage to job summary
 
-**⚠️ Review: Wrong workflow filename in path trigger** — the path filter references `.github/workflows/test-ipcalc-skill.yml` but the actual file is `skill-unit-test.yml`. Changes to the workflow file itself will never retrigger a run.
+~~**⚠️ Review: Wrong workflow filename in path trigger** — the path filter references `.github/workflows/test-ipcalc-skill.yml` but the actual file is `skill-unit-test.yml`. Changes to the workflow file itself will never retrigger a run.~~ **Fixed** — path trigger now correctly references `skill-unit-test.yml`.
 
 ### Network Tests
 
@@ -185,9 +219,9 @@ These are not CLI/Parity/Skill/Web tests but are part of the CI/CD setup.
 
 | # | Severity | Workflow | Issue |
 |---|----------|----------|-------|
-| 1 | High | `cli-test-aws-vpc.yml` | Hardcoded `eu-north-1` in `configure-aws-credentials` ignores `${{ env.AWS_REGION }}` |
-| 2 | High | `skill-unit-test.yml` | Path trigger references non-existent `test-ipcalc-skill.yml`; workflow changes never self-trigger |
-| 3 | Medium | `cli-test-azure-vnet.yml` | Static `RESOURCE_GROUP`/`VNET_NAME` env vars (no unique ID) risk collisions on concurrent runs |
+| ~~1~~ | ~~High~~ | ~~`cli-test-aws-vpc.yml`~~ | ~~Hardcoded `eu-north-1` in `configure-aws-credentials` ignores `${{ env.AWS_REGION }}`~~ **Fixed** |
+| ~~2~~ | ~~High~~ | ~~`skill-unit-test.yml`~~ | ~~Path trigger references non-existent `test-ipcalc-skill.yml`; workflow changes never self-trigger~~ **Fixed** |
+| ~~3~~ | ~~Medium~~ | ~~`cli-test-azure-vnet.yml`~~ | ~~Static `RESOURCE_GROUP`/`VNET_NAME` env vars (no unique ID) risk collisions on concurrent runs~~ **Fixed** |
 | 4 | Medium | `web-beta-deploy.yml` | Analytics snippet not injected (unlike production deploy) |
 | 5 | Medium | `parity-test-alicloud.yml` | Only parity test with PR trigger; AWS/Azure/GCP parity don't run on PRs |
 | 6 | Low | `skill-network-test-azure.yml` | Broader path trigger (`skills/ipcalc-for-cloud/**`) than other skill network tests |
