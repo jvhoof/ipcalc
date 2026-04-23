@@ -30,7 +30,7 @@ jobs:
 
       # Step 2: Check out the main branch 
       - name: Checkout main branch 
-        uses: actions/checkout@v3  # Use the checkout action to pull the main branch code 
+        uses: actions/checkout@v6
         with: 
           ref: main  # Specify the main branch 
           token: ${{ secrets.GITHUB_TOKEN }}  # Use the GitHub token for authentication 

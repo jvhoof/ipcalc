@@ -106,7 +106,7 @@ Each workflow has a single job with this pattern:
 
 ### Parity Issues to Review
 
-- **⚠️ PR trigger asymmetry** (`parity-test-alicloud.yml`): AliCloud parity runs on PRs; AWS, Azure, and GCP parity do not. Consider adding PR triggers to the other three so regressions are caught before merge.
+- ~~**⚠️ PR trigger asymmetry** (`parity-test-alicloud.yml`): AliCloud parity runs on PRs; AWS, Azure, and GCP parity do not. Consider adding PR triggers to the other three so regressions are caught before merge.~~ **Fixed** — `pull_request` trigger removed from `parity-test-alicloud.yml`.
 - **⚠️ AWS has no hub-spoke parity**: AWS parity only tests single-VPC formats. GCP and Azure test both topologies. If AWS supports spoke/peering output it should be included here.
 
 ---
@@ -170,8 +170,8 @@ These deploy real infrastructure using Python-generated configs and then validat
 
 ### Skill Network Issues to Review
 
-- **⚠️ OCI sequencing** (`skill-network-test-oci.yml`): OCI CLI job waits for Terraform to finish. This halves parallelism and means a Terraform failure skips the CLI test. Consider running them independently.
-- **⚠️ Azure path trigger is broader** (`skill-network-test-azure.yml`): Trigger uses `skills/ipcalc-for-cloud/**` (all skill files), while other clouds target only `scripts/**` and `templates/<provider>/**`. A Python change for any cloud retriggers the Azure network tests.
+- ~~**⚠️ OCI sequencing** (`skill-network-test-oci.yml`): OCI CLI job waits for Terraform to finish. This halves parallelism and means a Terraform failure skips the CLI test. Consider running them independently.~~ **Fixed** — `needs: deploy-with-terraform` removed; both jobs now run in parallel.
+- ~~**⚠️ Azure path trigger is broader** (`skill-network-test-azure.yml`): Trigger uses `skills/ipcalc-for-cloud/**` (all skill files), while other clouds target only `scripts/**` and `templates/<provider>/**`. A Python change for any cloud retriggers the Azure network tests.~~ **Fixed** — path trigger now scoped to `scripts/**` and `templates/azure/**`.
 
 ---
 
@@ -210,7 +210,7 @@ These are not CLI/Parity/Skill/Web tests but are part of the CI/CD setup.
 
 ### Other Issues to Review
 
-- **⚠️ Stale action versions** — FortiCNAPP workflows use `actions/checkout@v3` while all other workflows use `@v6`. `test-oracle-oidc.yml` uses `actions/setup-node@v4.0.3`.
+- ~~**⚠️ Stale action versions** — FortiCNAPP workflows use `actions/checkout@v3` while all other workflows use `@v6`. `test-oracle-oidc.yml` uses `actions/setup-node@v4.0.3`.~~ **Fixed** — all three FortiCNAPP workflows updated to `actions/checkout@v6`; `test-oracle-oidc.yml` updated to `actions/setup-node@v6`.
 - **⚠️ `test-oracle-oidc.yml` triggers on every main push**: This appears to be an isolated OIDC smoke test. Consider whether it should run on every push or only on dispatch.
 
 ---
@@ -223,9 +223,9 @@ These are not CLI/Parity/Skill/Web tests but are part of the CI/CD setup.
 | ~~2~~ | ~~High~~ | ~~`skill-unit-test.yml`~~ | ~~Path trigger references non-existent `test-ipcalc-skill.yml`; workflow changes never self-trigger~~ **Fixed** |
 | ~~3~~ | ~~Medium~~ | ~~`cli-test-azure-vnet.yml`~~ | ~~Static `RESOURCE_GROUP`/`VNET_NAME` env vars (no unique ID) risk collisions on concurrent runs~~ **Fixed** |
 | 4 | Medium | `web-beta-deploy.yml` | Analytics snippet not injected (unlike production deploy) |
-| 5 | Medium | `parity-test-alicloud.yml` | Only parity test with PR trigger; AWS/Azure/GCP parity don't run on PRs |
-| 6 | Low | `skill-network-test-azure.yml` | Broader path trigger (`skills/ipcalc-for-cloud/**`) than other skill network tests |
-| 7 | Low | `skill-network-test-oci.yml` | OCI CLI job is sequential (needs Terraform); other clouds are parallel |
-| 8 | Low | FortiCNAPP workflows | Using `actions/checkout@v3`; `test-oracle-oidc.yml` uses `actions/setup-node@v4.0.3` |
+| ~~5~~ | ~~Medium~~ | ~~`parity-test-alicloud.yml`~~ | ~~Only parity test with PR trigger; AWS/Azure/GCP parity don't run on PRs~~ **Fixed** |
+| ~~6~~ | ~~Low~~ | ~~`skill-network-test-azure.yml`~~ | ~~Broader path trigger (`skills/ipcalc-for-cloud/**`) than other skill network tests~~ **Fixed** |
+| ~~7~~ | ~~Low~~ | ~~`skill-network-test-oci.yml`~~ | ~~OCI CLI job is sequential (needs Terraform); other clouds are parallel~~ **Fixed** |
+| ~~8~~ | ~~Low~~ | ~~FortiCNAPP workflows~~ | ~~Using `actions/checkout@v3`; `test-oracle-oidc.yml` uses `actions/setup-node@v4.0.3`~~ **Fixed** |
 | 9 | Low | `test-oracle-oidc.yml` | Runs on every `main` push; consider dispatch-only |
 | 10 | Low | `parity-test-aws.yml` | No hub-spoke parity test (other clouds test both single and hub-spoke) |

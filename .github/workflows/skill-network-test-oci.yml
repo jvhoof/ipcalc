@@ -279,7 +279,6 @@ jobs:
   # ============================================================
   deploy-with-oci-cli:
     name: OCI CLI deployment and validation
-    needs: deploy-with-terraform
     runs-on: ubuntu-latest
 
     permissions:

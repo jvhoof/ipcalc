@@ -20,14 +20,6 @@ on:
       - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
       - 'skills/ipcalc-for-cloud/scripts/cloud_provider_config.py'
       - '.github/workflows/parity-test-alicloud.yml'
-  pull_request:
-    paths:
-      - 'src/templates/alicloud/**'
-      - 'skills/ipcalc-for-cloud/templates/alicloud/**'
-      - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
-      - 'skills/ipcalc-for-cloud/scripts/cloud_provider_config.py'
-      - '.github/workflows/parity-test-alicloud.yml'
-
 env:
   VPC_CIDR: ${{ github.event.inputs.cidr || '10.0.0.0/16' }}
   SUBNET_COUNT: ${{ github.event.inputs.subnets || '4' }}
