@@ -2,9 +2,6 @@ name: Run OCI Multi-Account Token Exchange
 
 on: 
     workflow_dispatch: 
-    push:
-        branches:
-            - main
 
 jobs:
   build:
