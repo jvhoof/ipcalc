@@ -383,39 +383,33 @@ jobs:
           while [ $elapsed -lt $MAX_WAIT ]; do
             echo "--- Peering status at ${elapsed}s ---"
 
-            # Fetch all hub peerings as CSV for reliable parsing (avoid --filter which
-            # is unreliable for peering objects synthesized from the network resource)
-            hub_peerings=$(gcloud compute networks peerings list \
+            # Fetch hub peerings as JSON; peerings live nested under the network object
+            hub_peerings_json=$(gcloud compute networks peerings list \
               --network="$VPC" \
-              --format="csv[no-heading](name,state)" 2>/dev/null || true)
-            echo "Hub VPC peerings (name,state):"
-            echo "$hub_peerings"
+              --format="json" 2>/dev/null || true)
+            echo "Hub VPC peerings:"
+            echo "$hub_peerings_json" | jq -r '.[0].peerings[] | "  \(.name): \(.state)"' 2>/dev/null || echo "  (none)"
 
             all_active=true
             for spoke_num in 1 2 3; do
-              # Parse CSV: strip quotes/spaces/CR, match by peering name
-              hub_status=$(echo "$hub_peerings" | awk -F',' -v name="hub-to-spoke${spoke_num}" '{
-                n=$1; gsub(/["\r ]/, "", n)
-                s=$2; gsub(/["\r ]/, "", s)
-                if (n==name) { print s; exit }
-              }')
+              hub_status=$(echo "$hub_peerings_json" | \
+                jq -r --arg name "hub-to-spoke${spoke_num}" \
+                '.[0].peerings[] | select(.name==$name) | .state' 2>/dev/null)
               echo "  hub-to-spoke${spoke_num} state: '${hub_status}'"
-              if [ "$hub_status" != "ACTIVE" ]; then
+              if [ "${hub_status}" != "ACTIVE" ]; then
                 echo "  hub-to-spoke${spoke_num}: ${hub_status:-NOT_FOUND}"
                 all_active=false
               fi
 
               spoke_vpc="${VPC}-spoke${spoke_num}"
-              spoke_peerings=$(gcloud compute networks peerings list \
+              spoke_peerings_json=$(gcloud compute networks peerings list \
                 --network="$spoke_vpc" \
-                --format="csv[no-heading](name,state)" 2>/dev/null || true)
-              spoke_status=$(echo "$spoke_peerings" | awk -F',' -v name="spoke${spoke_num}-to-hub" '{
-                n=$1; gsub(/["\r ]/, "", n)
-                s=$2; gsub(/["\r ]/, "", s)
-                if (n==name) { print s; exit }
-              }')
+                --format="json" 2>/dev/null || true)
+              spoke_status=$(echo "$spoke_peerings_json" | \
+                jq -r --arg name "spoke${spoke_num}-to-hub" \
+                '.[0].peerings[] | select(.name==$name) | .state' 2>/dev/null)
               echo "  spoke${spoke_num}-to-hub state: '${spoke_status}'"
-              if [ "$spoke_status" != "ACTIVE" ]; then
+              if [ "${spoke_status}" != "ACTIVE" ]; then
                 echo "  spoke${spoke_num}-to-hub: ${spoke_status:-NOT_FOUND}"
                 all_active=false
               fi
@@ -619,39 +613,33 @@ jobs:
           while [ $elapsed -lt $MAX_WAIT ]; do
             echo "--- Peering status at ${elapsed}s ---"
 
-            # Fetch all hub peerings as CSV for reliable parsing (avoid --filter which
-            # is unreliable for peering objects synthesized from the network resource)
-            hub_peerings=$(gcloud compute networks peerings list \
+            # Fetch hub peerings as JSON; peerings live nested under the network object
+            hub_peerings_json=$(gcloud compute networks peerings list \
               --network="$VPC" \
-              --format="csv[no-heading](name,state)" 2>/dev/null || true)
-            echo "Hub VPC peerings (name,state):"
-            echo "$hub_peerings"
+              --format="json" 2>/dev/null || true)
+            echo "Hub VPC peerings:"
+            echo "$hub_peerings_json" | jq -r '.[0].peerings[] | "  \(.name): \(.state)"' 2>/dev/null || echo "  (none)"
 
             all_active=true
             for spoke_num in 1 2 3; do
-              # Parse CSV: strip quotes/spaces/CR, match by peering name
-              hub_status=$(echo "$hub_peerings" | awk -F',' -v name="hub-to-spoke${spoke_num}" '{
-                n=$1; gsub(/["\r ]/, "", n)
-                s=$2; gsub(/["\r ]/, "", s)
-                if (n==name) { print s; exit }
-              }')
+              hub_status=$(echo "$hub_peerings_json" | \
+                jq -r --arg name "hub-to-spoke${spoke_num}" \
+                '.[0].peerings[] | select(.name==$name) | .state' 2>/dev/null)
               echo "  hub-to-spoke${spoke_num} state: '${hub_status}'"
-              if [ "$hub_status" != "ACTIVE" ]; then
+              if [ "${hub_status}" != "ACTIVE" ]; then
                 echo "  hub-to-spoke${spoke_num}: ${hub_status:-NOT_FOUND}"
                 all_active=false
               fi
 
               spoke_vpc="${VPC}-spoke${spoke_num}"
-              spoke_peerings=$(gcloud compute networks peerings list \
+              spoke_peerings_json=$(gcloud compute networks peerings list \
                 --network="$spoke_vpc" \
-                --format="csv[no-heading](name,state)" 2>/dev/null || true)
-              spoke_status=$(echo "$spoke_peerings" | awk -F',' -v name="spoke${spoke_num}-to-hub" '{
-                n=$1; gsub(/["\r ]/, "", n)
-                s=$2; gsub(/["\r ]/, "", s)
-                if (n==name) { print s; exit }
-              }')
+                --format="json" 2>/dev/null || true)
+              spoke_status=$(echo "$spoke_peerings_json" | \
+                jq -r --arg name "spoke${spoke_num}-to-hub" \
+                '.[0].peerings[] | select(.name==$name) | .state' 2>/dev/null)
               echo "  spoke${spoke_num}-to-hub state: '${spoke_status}'"
-              if [ "$spoke_status" != "ACTIVE" ]; then
+              if [ "${spoke_status}" != "ACTIVE" ]; then
                 echo "  spoke${spoke_num}-to-hub: ${spoke_status:-NOT_FOUND}"
                 all_active=false
               fi
