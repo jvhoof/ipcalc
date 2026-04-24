@@ -1,0 +1,165 @@
+name: '[Parity] OCI Output Comparison: TypeScript vs Python'
+
+on:
+  workflow_dispatch:
+    inputs:
+      cidr:
+        description: 'VCN CIDR block'
+        required: false
+        default: '10.0.0.0/16'
+      subnets:
+        description: 'Number of subnets'
+        required: false
+        default: '4'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/templates/oracle/**'
+      - 'skills/ipcalc-for-cloud/templates/oracle/**'
+      - 'skills/ipcalc-for-cloud/scripts/template_processor.py'
+      - 'skills/ipcalc-for-cloud/scripts/cloud_provider_config.py'
+      - '.github/workflows/parity-test-oci.yml'
+
+env:
+  VCN_CIDR: ${{ github.event.inputs.cidr || '10.0.0.0/16' }}
+  SUBNET_COUNT: ${{ github.event.inputs.subnets || '4' }}
+
+jobs:
+  compare-oci-outputs:
+    name: Compare OCI outputs (TypeScript vs Python)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # ── TypeScript setup ────────────────────────────────────────────────────
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      # ── Python setup ────────────────────────────────────────────────────────
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install Python dependencies
+        working-directory: skills/ipcalc-for-cloud
+        run: uv sync
+
+      # ── Generate outputs (single VCN) ───────────────────────────────────────
+
+      - name: Generate TypeScript outputs (single VCN)
+        run: |
+          mkdir -p /tmp/parity/single/ts /tmp/parity/single/py /tmp/parity/single/diff
+
+          for fmt in oci terraform; do
+            npm run cli -- \
+              --provider oracle \
+              --cidr ${{ env.VCN_CIDR }} \
+              --subnets ${{ env.SUBNET_COUNT }} \
+              --output $fmt \
+              --file /tmp/parity/single/ts/${fmt}
+            echo "Generated TS single/$fmt"
+          done
+
+      - name: Generate Python outputs (single VCN)
+        working-directory: skills/ipcalc-for-cloud
+        run: |
+          for fmt in oci terraform; do
+            uv run python scripts/ipcalc.py \
+              --provider oracle \
+              --cidr ${{ env.VCN_CIDR }} \
+              --subnets ${{ env.SUBNET_COUNT }} \
+              --output $fmt \
+              --file /tmp/parity/single/py/${fmt}
+            echo "Generated PY single/$fmt"
+          done
+
+      # ── Compare and report ──────────────────────────────────────────────────
+
+      - name: Compare outputs and generate report
+        id: compare
+        run: |
+          PASS=0
+          FAIL=0
+          REPORT_FILE=/tmp/parity-report.md
+
+          echo "## OCI Output Parity Report: TypeScript vs Python" > $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $REPORT_FILE
+          echo "**VCN CIDR:** \`${{ env.VCN_CIDR }}\`  **Subnets:** \`${{ env.SUBNET_COUNT }}\`" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+
+          # ── Single VCN ──
+          echo "### Single VCN" >> $REPORT_FILE
+          echo "" >> $REPORT_FILE
+          echo "| Format | Result | Details |" >> $REPORT_FILE
+          echo "|--------|--------|---------|" >> $REPORT_FILE
+
+          for fmt in oci terraform; do
+            TS_FILE=/tmp/parity/single/ts/${fmt}
+            PY_FILE=/tmp/parity/single/py/${fmt}
+            DIFF_FILE=/tmp/parity/single/diff/${fmt}.diff
+
+            if diff "$TS_FILE" "$PY_FILE" > "$DIFF_FILE" 2>&1; then
+              echo "| \`$fmt\` | ✅ Identical | No differences |" >> $REPORT_FILE
+              PASS=$((PASS + 1))
+            else
+              LINES=$(wc -l < "$DIFF_FILE")
+              echo "| \`$fmt\` | ❌ Differs | $LINES diff lines — see artifact |" >> $REPORT_FILE
+              FAIL=$((FAIL + 1))
+            fi
+          done
+
+          echo "" >> $REPORT_FILE
+          echo "---" >> $REPORT_FILE
+          echo "**Total: $PASS passed, $FAIL failed** (out of $((PASS + FAIL)) comparisons)" >> $REPORT_FILE
+
+          cat $REPORT_FILE
+          cat $REPORT_FILE >> $GITHUB_STEP_SUMMARY
+
+          echo "pass=$PASS" >> $GITHUB_OUTPUT
+          echo "fail=$FAIL" >> $GITHUB_OUTPUT
+
+      - name: Show diffs for failing formats
+        if: steps.compare.outputs.fail != '0'
+        run: |
+          echo "=== Failing diffs ==="
+          for fmt in oci terraform; do
+            DIFF_FILE=/tmp/parity/single/diff/${fmt}.diff
+            if [ -s "$DIFF_FILE" ]; then
+              echo ""
+              echo "── single/$fmt ──────────────────────────"
+              cat "$DIFF_FILE"
+            fi
+          done
+
+      - name: Upload diff artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oci-parity-diffs
+          path: /tmp/parity/single/
+          retention-days: 14
+
+      - name: Fail if any format differs
+        if: steps.compare.outputs.fail != '0'
+        run: |
+          echo "❌ ${{ steps.compare.outputs.fail }} format(s) differ between TypeScript and Python outputs."
+          exit 1
