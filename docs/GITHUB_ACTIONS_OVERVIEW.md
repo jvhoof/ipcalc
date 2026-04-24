@@ -16,6 +16,7 @@ This document provides a structured overview of all GitHub Actions workflows for
 [![Parity Azure](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-azure.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-azure.yml)
 [![Parity GCP](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-gcp.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-gcp.yml)
 [![Parity AliCloud](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-alicloud.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-alicloud.yml)
+[![Parity OCI](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-oci.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/parity-test-oci.yml)
 
 ### Skill Tests
 [![Skill Unit Tests](https://github.com/jvhoof/ipcalc/actions/workflows/skill-unit-test.yml/badge.svg)](https://github.com/jvhoof/ipcalc/actions/workflows/skill-unit-test.yml)
@@ -86,8 +87,10 @@ These workflows verify that the **TypeScript CLI** and the **Python skill** (`sc
 | `parity-test-azure.yml` | Azure | cli, terraform, bicep, arm, powershell | single VNet + hub-spoke | 10 | push `main`¹, dispatch |
 | `parity-test-gcp.yml` | GCP | gcloud, terraform | single VPC + hub-spoke | 4 | push `main`¹, dispatch |
 | `parity-test-alicloud.yml` | AliCloud | aliyun, terraform | single VPC | 2 | push `main`¹, dispatch |
+| `parity-test-oci.yml` | Oracle | oci, terraform | single VCN | 2 | push `main`², dispatch |
 
-¹ Path filters: `src/templates/<provider>/**`, `skills/ipcalc-for-cloud/templates/<provider>/**`, `skills/ipcalc-for-cloud/scripts/template_processor.py`, workflow file itself
+¹ Path filters: `src/templates/<provider>/**`, `skills/ipcalc-for-cloud/templates/<provider>/**`, `skills/ipcalc-for-cloud/scripts/template_processor.py`, workflow file itself  
+² Path filters: `src/templates/oracle/**`, `skills/ipcalc-for-cloud/templates/oracle/**`, `skills/ipcalc-for-cloud/scripts/template_processor.py`, `skills/ipcalc-for-cloud/scripts/cloud_provider_config.py`, workflow file itself
 
 ### Parity Test Job Details
 
@@ -99,7 +102,7 @@ Each workflow has a single job with this pattern:
 5. Upload diff artifacts (retention: 14 days)
 6. Fail if any format differs
 
-> **Note:** AWS parity tests only cover the single-VPC topology. The CLI does not support `--spoke-cidrs` for AWS; hub-spoke is only implemented for Azure and GCP.
+> **Note:** AWS and OCI parity tests only cover the single-VPC/VCN topology. The CLI does not support `--spoke-cidrs` for AWS or Oracle; hub-spoke is only implemented for Azure and GCP.
 
 ---
 
