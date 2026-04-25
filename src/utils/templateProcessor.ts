@@ -37,6 +37,12 @@ export interface TemplateData {
   peeringEnabled?: boolean
   spokeVNets?: SpokeVNet[]
   spokeVPCs?: any[]  // GCP spoke VPCs (same structure as spokeVNets)
+  namePrefix?: string
+}
+
+function applyNamePrefix(content: string, data: TemplateData): string {
+  const prefix = data.namePrefix?.trim() || 'ipcalc'
+  return content.split('myproject').join(prefix)
 }
 
 // ============================================
@@ -151,7 +157,7 @@ export function processAzureCLITemplate(templateContent: string, data: TemplateD
   content = content.replace('{{spokeVnetCreation}}', spokeVnetCreation)
   content = content.replace('{{vnetPeering}}', vnetPeering)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -283,7 +289,7 @@ export function processAzureTerraformTemplate(templateContent: string, data: Tem
   content = content.replace('{{vnetPeeringResources}}', vnetPeeringResources)
   content = content.replace('{{spokeVnetOutputs}}', spokeVnetOutputs)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -417,7 +423,7 @@ export function processAzureBicepTemplate(templateContent: string, data: Templat
   content = content.replace('{{vnetPeeringResources}}', vnetPeeringResources)
   content = content.replace('{{spokeVnetOutputs}}', spokeVnetOutputs)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -581,7 +587,7 @@ export function processAzureARMTemplate(templateContent: string, data: TemplateD
   content = content.replace('{{vnetPeeringResources}}', vnetPeeringResources)
   content = content.replace('{{spokeVnetOutputs}}', spokeVnetOutputs)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -712,7 +718,7 @@ export function processAzurePowerShellTemplate(templateContent: string, data: Te
   content = content.replace('{{spokeVnetCreation}}', spokeVnetCreation)
   content = content.replace('{{vnetPeering}}', vnetPeering)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 // ============================================

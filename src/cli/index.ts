@@ -35,6 +35,7 @@ interface CliArgs {
   cidr: string
   subnets: number
   prefix?: number
+  namePrefix?: string
   output?: 'info' | 'cli' | 'terraform' | 'bicep' | 'arm' | 'powershell' | 'cloudformation' | 'gcloud' | 'oci' | 'aliyun'
   file?: string
   help?: boolean
@@ -70,6 +71,9 @@ Optional Arguments:
   --prefix <number>     Desired subnet CIDR prefix (e.g., 26 for /26)
                         When specified, subnets will use this prefix instead
                         of automatic calculation based on subnet count
+  --name-prefix <name>  Prefix for resource naming in generated IaC (default: ipcalc)
+                        Used in resource names like ipcalc-vnet, ipcalc-rg
+                        Azure only: alphanumeric, hyphens, underscores (max 32 chars)
   --output <type>       Output type (default: info)
                         Azure: info, cli, terraform, bicep, arm, powershell
                         AWS: info, cli, terraform, cloudformation
@@ -149,6 +153,10 @@ function parseArgs(): CliArgs | null {
         break
       case '--prefix':
         args.prefix = parseInt(nextArg || '0', 10)
+        i++
+        break
+      case '--name-prefix':
+        args.namePrefix = nextArg
         i++
         break
       case '--output':
@@ -283,7 +291,8 @@ function generateOutput(args: CliArgs, subnets: SubnetInfo[], spokeVNets: any[])
   const templateData: any = {
     vnetCidr: args.cidr,
     subnets: subnets,
-    peeringEnabled: spokeVNets.length > 0
+    peeringEnabled: spokeVNets.length > 0,
+    namePrefix: args.namePrefix
   }
 
   // Azure uses spokeVNets, GCP uses spokeVPCs

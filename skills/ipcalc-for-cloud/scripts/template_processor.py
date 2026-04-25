@@ -1411,8 +1411,7 @@ def process_template(provider: str, output_format: str, data: Dict[str, Any], te
 
 
 def _apply_name_prefix(content: str, data: Dict[str, Any]) -> str:
-    """Replace the default 'myproject' placeholder with a caller-supplied name prefix."""
-    name_prefix = data.get('namePrefix')
-    if name_prefix:
-        content = content.replace('myproject', name_prefix)
+    """Replace the default 'ipcalc' placeholder with the caller-supplied name prefix."""
+    name_prefix = data.get('namePrefix') or 'ipcalc'
+    content = content.replace('ipcalc', name_prefix)
     return content

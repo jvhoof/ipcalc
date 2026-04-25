@@ -401,6 +401,10 @@ Examples:
   %(prog)s --provider azure --cidr 10.0.0.0/16 --subnets 2 \\
     --spoke-cidrs "10.1.0.0/16,10.2.0.0/16" --spoke-subnets "2,2" \\
     --output terraform
+
+  # Custom resource name prefix
+  %(prog)s --provider azure --cidr 10.0.0.0/16 --subnets 4 \\
+    --name-prefix myapp --output terraform
         """
     )
 
@@ -428,6 +432,11 @@ Examples:
         "--prefix",
         type=int,
         help="Desired subnet CIDR prefix (e.g., 26 for /26)"
+    )
+    parser.add_argument(
+        "--name-prefix",
+        default="ipcalc",
+        help="Prefix for resource naming in generated IaC (default: ipcalc)"
     )
     parser.add_argument(
         "--output",
@@ -547,7 +556,8 @@ Examples:
                 "vnetCidr": args.cidr,
                 "vpcCidr": args.cidr,  # AWS uses vpcCidr
                 "subnets": subnets,
-                "peeringEnabled": len(spoke_vnets) > 0
+                "peeringEnabled": len(spoke_vnets) > 0,
+                "namePrefix": args.name_prefix,
             }
             if spoke_vnets:
                 if args.provider == 'azure':

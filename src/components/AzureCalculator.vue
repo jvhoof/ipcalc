@@ -99,6 +99,29 @@
 
             <v-divider class="my-4"></v-divider>
 
+            <div class="text-subtitle-2 font-weight-bold mb-3">Resource Name Prefix</div>
+            <v-row>
+              <v-col cols="12">
+                <v-text-field
+                  v-model="namePrefix"
+                  label="Name Prefix"
+                  variant="outlined"
+                  density="comfortable"
+                  placeholder="ipcalc"
+                  hint="Prefix used to name Azure resources (e.g. ipcalc-vnet, ipcalc-rg). Alphanumeric, hyphens and underscores only."
+                  persistent-hint
+                  maxlength="32"
+                  :rules="[v => !v || /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(v) || 'Must start with alphanumeric and contain only letters, numbers, hyphens or underscores']"
+                >
+                  <template v-slot:prepend-inner>
+                    <v-icon size="small">mdi-tag-outline</v-icon>
+                  </template>
+                </v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-4"></v-divider>
+
             <!-- VNET Peering Configuration -->
             <div class="text-subtitle-2 font-weight-bold mb-3 d-flex align-center justify-space-between">
               <div class="d-flex align-center">
@@ -510,6 +533,7 @@ interface SpokeVNet {
 const vnetCidr = ref<string>(azureConfig.defaultCidr)
 const numberOfSubnets = ref<number>(azureConfig.defaultSubnetCount)
 const desiredSubnetPrefix = ref<number | null>(null)
+const namePrefix = ref<string>('')
 const vnetInfo = ref<VNetInfo | null>(null)
 const subnets = ref<Subnet[]>([])
 const errorMessage = ref<string>('')
@@ -734,7 +758,8 @@ const generateAzureCLI = async (): Promise<void> => {
     vnetCidr: vnetCidr.value,
     subnets: subnets.value,
     peeringEnabled: peeringEnabled.value,
-    spokeVNets: spokeVNets.value
+    spokeVNets: spokeVNets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -749,7 +774,8 @@ const generateTerraform = async (): Promise<void> => {
     vnetCidr: vnetCidr.value,
     subnets: subnets.value,
     peeringEnabled: peeringEnabled.value,
-    spokeVNets: spokeVNets.value
+    spokeVNets: spokeVNets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -764,7 +790,8 @@ const generateBicep = async (): Promise<void> => {
     vnetCidr: vnetCidr.value,
     subnets: subnets.value,
     peeringEnabled: peeringEnabled.value,
-    spokeVNets: spokeVNets.value
+    spokeVNets: spokeVNets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -779,7 +806,8 @@ const generateARM = async (): Promise<void> => {
     vnetCidr: vnetCidr.value,
     subnets: subnets.value,
     peeringEnabled: peeringEnabled.value,
-    spokeVNets: spokeVNets.value
+    spokeVNets: spokeVNets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -794,7 +822,8 @@ const generatePowerShell = async (): Promise<void> => {
     vnetCidr: vnetCidr.value,
     subnets: subnets.value,
     peeringEnabled: peeringEnabled.value,
-    spokeVNets: spokeVNets.value
+    spokeVNets: spokeVNets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -1069,6 +1098,7 @@ onMounted(async () => {
   const urlCidr = params.get('cidr')
   const urlSubnets = params.get('subnets')
   const urlPrefix = params.get('prefix')
+  const urlNamePrefix = params.get('name-prefix')
   const urlFormat = params.get('format')
   const urlSpokeCidrs = params.get('spoke-cidrs')
   const urlSpokeSubnets = params.get('spoke-subnets')
@@ -1076,6 +1106,7 @@ onMounted(async () => {
   if (urlCidr) vnetCidr.value = urlCidr
   if (urlSubnets) numberOfSubnets.value = parseInt(urlSubnets, 10)
   if (urlPrefix) desiredSubnetPrefix.value = parseInt(urlPrefix, 10)
+  if (urlNamePrefix) namePrefix.value = urlNamePrefix
 
   if (urlSpokeCidrs) {
     const cidrs = urlSpokeCidrs.split(',').map(c => c.trim()).filter(Boolean)
