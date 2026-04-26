@@ -12,9 +12,12 @@ import ipaddress
 import logging
 import os
 import re
+import subprocess
 import sys
+import tempfile
 from http import HTTPStatus
 
+from d2_python import D2
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +47,7 @@ AZURE_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
     'arm':            ('application/json',   'azuredeploy.json'),
     'powershell':     ('text/plain',         'deploy.ps1'),
     'd2':             ('text/plain',         'diagram.d2'),
+    'svg':            ('image/svg+xml',      'diagram.svg'),
 }
 
 AWS_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
@@ -80,6 +84,39 @@ def _problem(status: int, detail: str) -> JSONResponse:
         },
         media_type=_PROBLEM_CONTENT_TYPE,
     )
+
+
+_D2_BINARY = D2().binary_path
+
+
+def _render_d2_svg(d2_code: str) -> str:
+    """Convert D2 source to SVG using the bundled d2 binary.
+
+    Sets D2_BUNDLE=false via the environment so d2 doesn't try to fetch the
+    icon URLs at render time (the wrapper passes --bundle false as two args,
+    which d2 doesn't accept; the env var is the reliable workaround).
+    """
+    d2_tmp = svg_tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.d2', delete=False) as f:
+            f.write(d2_code)
+            d2_tmp = f.name
+        with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as f:
+            svg_tmp = f.name
+        env = {**os.environ, 'D2_BUNDLE': 'false'}
+        subprocess.run(
+            [_D2_BINARY, '--layout', 'elk', d2_tmp, svg_tmp],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        with open(svg_tmp, 'r', encoding='utf-8') as f:
+            return f.read()
+    finally:
+        for path in (d2_tmp, svg_tmp):
+            if path and os.path.exists(path):
+                os.unlink(path)
 
 
 # Safety limits
@@ -307,9 +344,17 @@ def generate_azure(
         **(({'namePrefix': name_prefix}) if name_prefix else {}),
     }
 
-    if format == 'd2':
+    if format in ('d2', 'svg'):
         icon_base_url = f"{request.base_url}api/icons"
-        code = AzureDiagramGenerator(icon_base_url=icon_base_url).generate(data)
+        d2_code = AzureDiagramGenerator(icon_base_url=icon_base_url).generate(data)
+        if format == 'svg':
+            try:
+                code = _render_d2_svg(d2_code)
+            except Exception as exc:
+                logger.exception('D2 SVG rendering failed')
+                raise HTTPException(status_code=500, detail=f'SVG rendering failed: {exc}')
+        else:
+            code = d2_code
     else:
         try:
             code = process_template('azure', format, data, TEMPLATES_DIR)

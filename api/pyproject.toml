@@ -6,6 +6,7 @@ requires-python = ">=3.9"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
+    "d2-python-wrapper>=0.2.0",
 ]
 
 [dependency-groups]

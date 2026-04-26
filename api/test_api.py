@@ -377,3 +377,40 @@ class TestAzureD2:
             'spoke-subnets': '2',
         })
         assert '10.1.0.0/16' in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Azure – SVG diagram
+# ---------------------------------------------------------------------------
+
+class TestAzureSVG:
+    def test_single_vnet_status(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'svg'})
+        assert resp.status_code == 200
+
+    def test_single_vnet_content_type(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'svg'})
+        assert 'image/svg+xml' in resp.headers['content-type']
+
+    def test_single_vnet_filename_header(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'svg'})
+        assert 'diagram.svg' in resp.headers['content-disposition']
+
+    def test_single_vnet_is_valid_svg(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 4, 'format': 'svg'})
+        assert resp.status_code == 200
+        body = resp.text
+        assert body.strip().startswith('<')
+        assert '<svg' in body
+        assert '</svg>' in body
+
+    def test_hub_spoke_svg(self):
+        resp = client.get('/api/azure', params={
+            'cidr': '10.0.0.0/16',
+            'subnets': 2,
+            'format': 'svg',
+            'spoke-cidrs': '10.1.0.0/16,10.2.0.0/16',
+            'spoke-subnets': '2,2',
+        })
+        assert resp.status_code == 200
+        assert '<svg' in resp.text
