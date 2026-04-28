@@ -91,6 +91,31 @@
                 When set, subnets will be created with this CIDR prefix instead of automatically dividing the VPC. This allows you to avoid filling the entire VPC address space.
               </div>
             </v-alert>
+
+            <v-divider class="my-4"></v-divider>
+
+            <div class="text-subtitle-2 font-weight-bold mb-3">Resource Name Prefix</div>
+            <v-row>
+              <v-col cols="12">
+                <v-text-field
+                  v-model="namePrefix"
+                  label="Name Prefix"
+                  variant="outlined"
+                  density="comfortable"
+                  placeholder="ipcalc"
+                  hint="Prefix used to name AWS resources (e.g. ipcalc-vpc, ipcalc-subnet1). Alphanumeric, hyphens and underscores only."
+                  persistent-hint
+                  maxlength="32"
+                  :rules="[v => !v || /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(v) || 'Must start with alphanumeric and contain only letters, numbers, hyphens or underscores']"
+                >
+                  <template v-slot:prepend-inner>
+                    <v-icon size="small">mdi-tag-outline</v-icon>
+                  </template>
+                </v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-4"></v-divider>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
@@ -305,7 +330,8 @@
         provider="aws"
         :cidr="vpcCidr"
         :subnets="numberOfSubnets"
-        :prefix="desiredSubnetPrefix"
+        :subnet-prefix="desiredSubnetPrefix"
+        :name-prefix="namePrefix || undefined"
         :is-dark-mode="isDarkMode"
       />
     </v-card-text>
@@ -355,6 +381,7 @@ interface Subnet {
 const vpcCidr = ref<string>(awsConfig.defaultCidr)
 const numberOfSubnets = ref<number>(awsConfig.defaultSubnetCount)
 const desiredSubnetPrefix = ref<number | null>(null)
+const namePrefix = ref<string>('')
 const vpcInfo = ref<VPCInfo | null>(null)
 const subnets = ref<Subnet[]>([])
 const errorMessage = ref<string>('')
@@ -567,7 +594,8 @@ const generateAWSCLI = async (): Promise<void> => {
 
   const code = await loadAWSCLITemplate({
     vnetCidr: vpcCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -580,7 +608,8 @@ const generateTerraform = async (): Promise<void> => {
 
   const code = await loadAWSTerraformTemplate({
     vnetCidr: vpcCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -593,7 +622,8 @@ const generateCloudFormation = async (): Promise<void> => {
 
   const code = await loadAWSCloudFormationTemplate({
     vnetCidr: vpcCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -645,11 +675,26 @@ const handleKeydown = (event: KeyboardEvent): void => {
 }
 
 onMounted(() => {
-  // Set default subnet prefix based on initial VPC CIDR
-  const defaultPrefix = getDefaultSubnetPrefix()
-  if (defaultPrefix !== null) {
-    desiredSubnetPrefix.value = defaultPrefix
+  const params = new URLSearchParams(window.location.search)
+
+  const urlCidr = params.get('cidr')
+  const urlSubnets = params.get('subnets')
+  const urlSubnetPrefix = params.get('subnet-prefix')
+  const urlPrefix = params.get('prefix')
+
+  if (urlCidr) vpcCidr.value = urlCidr
+  if (urlSubnets) numberOfSubnets.value = parseInt(urlSubnets, 10)
+  if (urlSubnetPrefix) desiredSubnetPrefix.value = parseInt(urlSubnetPrefix, 10)
+  if (urlPrefix) namePrefix.value = urlPrefix
+
+  // Set default subnet prefix based on initial VPC CIDR (only if not set via URL)
+  if (!urlSubnetPrefix) {
+    const defaultPrefix = getDefaultSubnetPrefix()
+    if (defaultPrefix !== null) {
+      desiredSubnetPrefix.value = defaultPrefix
+    }
   }
+
   calculateVPC()
   window.addEventListener('keydown', handleKeydown)
 })

@@ -90,7 +90,8 @@ const props = defineProps<{
   provider: 'azure' | 'aws' | 'gcp'
   cidr: string
   subnets: number
-  prefix?: number | null
+  subnetPrefix?: number | null
+  namePrefix?: string
   spokeCidrs?: string[]
   spokeSubnets?: number[]
   isDarkMode: boolean
@@ -123,8 +124,12 @@ function buildUrl(format: string): string {
   params.set('subnets', String(props.subnets))
   params.set('format', format)
 
-  if (props.prefix != null && props.prefix > 0) {
-    params.set('prefix', String(props.prefix))
+  if (props.subnetPrefix != null && props.subnetPrefix > 0) {
+    params.set('subnet-prefix', String(props.subnetPrefix))
+  }
+
+  if (props.namePrefix) {
+    params.set('prefix', props.namePrefix)
   }
 
   if (props.spokeCidrs && props.spokeCidrs.length > 0) {

@@ -91,6 +91,31 @@
                 When set, subnets will be created with this CIDR prefix instead of automatically dividing the VCN. This allows you to avoid filling the entire VCN address space.
               </div>
             </v-alert>
+
+            <v-divider class="my-4"></v-divider>
+
+            <div class="text-subtitle-2 font-weight-bold mb-3">Resource Name Prefix</div>
+            <v-row>
+              <v-col cols="12">
+                <v-text-field
+                  v-model="namePrefix"
+                  label="Name Prefix"
+                  variant="outlined"
+                  density="comfortable"
+                  placeholder="ipcalc"
+                  hint="Prefix used to name OCI resources (e.g. ipcalc-vcn, ipcalc-subnet1). Alphanumeric, hyphens and underscores only."
+                  persistent-hint
+                  maxlength="32"
+                  :rules="[v => !v || /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(v) || 'Must start with alphanumeric and contain only letters, numbers, hyphens or underscores']"
+                >
+                  <template v-slot:prepend-inner>
+                    <v-icon size="small">mdi-tag-outline</v-icon>
+                  </template>
+                </v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-4"></v-divider>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
@@ -324,6 +349,7 @@ interface Subnet {
 const vcnCidr = ref<string>(oracleConfig.defaultCidr)
 const numberOfSubnets = ref<number>(oracleConfig.defaultSubnetCount)
 const desiredSubnetPrefix = ref<number | null>(null)
+const namePrefix = ref<string>('')
 const vcnInfo = ref<VCNInfo | null>(null)
 const subnets = ref<Subnet[]>([])
 const errorMessage = ref<string>('')
@@ -534,7 +560,8 @@ const generateOciCLI = async (): Promise<void> => {
 
   const code = await loadOracleOCITemplate({
     vnetCidr: vcnCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -547,7 +574,8 @@ const generateTerraform = async (): Promise<void> => {
 
   const code = await loadOracleTerraformTemplate({
     vnetCidr: vcnCidr.value,
-    subnets: subnets.value
+    subnets: subnets.value,
+    namePrefix: namePrefix.value || undefined
   })
 
   generatedCode.value = code
@@ -599,11 +627,20 @@ const handleKeydown = (event: KeyboardEvent): void => {
 }
 
 onMounted(() => {
-  // Set default subnet prefix based on initial VCN CIDR
-  const defaultPrefix = getDefaultSubnetPrefix()
-  if (defaultPrefix !== null) {
-    desiredSubnetPrefix.value = defaultPrefix
+  const params = new URLSearchParams(window.location.search)
+
+  const urlSubnetPrefix = params.get('subnet-prefix')
+
+  if (urlSubnetPrefix) desiredSubnetPrefix.value = parseInt(urlSubnetPrefix, 10)
+
+  // Set default subnet prefix based on initial VCN CIDR (only if not set via URL)
+  if (!urlSubnetPrefix) {
+    const defaultPrefix = getDefaultSubnetPrefix()
+    if (defaultPrefix !== null) {
+      desiredSubnetPrefix.value = defaultPrefix
+    }
   }
+
   calculateVCN()
   window.addEventListener('keydown', handleKeydown)
 })

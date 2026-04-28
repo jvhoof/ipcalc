@@ -72,8 +72,8 @@ Optional Arguments:
                         When specified, subnets will use this prefix instead
                         of automatic calculation based on subnet count
   --prefix <name>       Prefix for resource naming in generated IaC (default: ipcalc)
-                        Used in resource names like ipcalc-vnet, ipcalc-rg
-                        Azure only: alphanumeric, hyphens, underscores (max 32 chars)
+                        Used in resource names like ipcalc-vpc, ipcalc-vnet, ipcalc-rg
+                        Alphanumeric, hyphens, underscores only (max 32 chars)
   --output <type>       Output type (default: info)
                         Azure: info, cli, terraform, bicep, arm, powershell
                         AWS: info, cli, terraform, cloudformation
@@ -102,11 +102,17 @@ Examples:
   # Generate Terraform for AWS
   ipcalc --provider aws --cidr 10.0.0.0/16 --subnets 3 --output terraform
 
+  # AWS with custom resource name prefix
+  ipcalc --provider aws --cidr 10.0.0.0/16 --subnets 4 --output terraform --prefix myapp
+
   # Generate Azure CLI script to file
   ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 2 --output cli --file deploy.sh
 
   # Generate GCP gcloud commands
   ipcalc --provider gcp --cidr 10.0.0.0/20 --subnets 4 --output gcloud
+
+  # GCP with custom resource name prefix
+  ipcalc --provider gcp --cidr 10.0.0.0/20 --subnets 4 --output terraform --prefix myapp
 
   # Azure with VNET peering (hub-spoke topology)
   ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 2 \\

@@ -760,7 +760,7 @@ export function processAWSCLITemplate(templateContent: string, data: TemplateDat
   content = content.replace('{{subnetVariables}}', subnetVariables)
   content = content.replace('{{subnetCreation}}', subnetCreation)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -813,7 +813,7 @@ export function processAWSTerraformTemplate(templateContent: string, data: Templ
   content = content.replace('{{subnetResources}}', subnetResources)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -872,7 +872,7 @@ export function processAWSCloudFormationTemplate(templateContent: string, data: 
   content = content.replace('{{subnetResources}}', subnetResources)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 // ============================================
@@ -958,7 +958,7 @@ export function processGCPGcloudTemplate(templateContent: string, data: Template
   content = content.replace('{{spokeVPCCreation}}', spokeVPCCreation)
   content = content.replace('{{spokePeeringCreation}}', spokePeeringCreation)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -1127,7 +1127,7 @@ export function processGCPTerraformTemplate(templateContent: string, data: Templ
   content = content.replace('{{spokePeeringResources}}', spokePeeringResources)
   content = content.replace('{{spokeOutputs}}', spokeOutputs)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 // ============================================
@@ -1161,7 +1161,7 @@ export function processOracleOCITemplate(templateContent: string, data: Template
   content = content.replace(/{{vcnCidr}}/g, data.vnetCidr)
   content = content.replace('{{subnetCreation}}', subnetCreation)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -1219,7 +1219,7 @@ export function processOracleTerraformTemplate(templateContent: string, data: Te
   content = content.replace('{{subnetResources}}', subnetResources)
   content = content.replace('{{subnetOutputs}}', subnetOutputs)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 // ============================================
@@ -1276,7 +1276,7 @@ export function processAliCloudAliyunTemplate(templateContent: string, data: Tem
   // interpreted by String.replace() (e.g. grep -v '^$' contains $' which inserts post-match text)
   content = content.replace('{{vSwitchCreation}}', () => vSwitchCreation)
 
-  return content
+  return applyNamePrefix(content, data)
 }
 
 /**
@@ -1341,5 +1341,5 @@ export function processAliCloudTerraformTemplate(templateContent: string, data: 
   content = content.replace('{{vSwitchResources}}', vSwitchResources)
   content = content.replace('{{vSwitchOutputs}}', vSwitchOutputs)
 
-  return content
+  return applyNamePrefix(content, data)
 }
