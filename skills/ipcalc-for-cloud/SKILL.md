@@ -49,7 +49,8 @@ Accept user input specifying:
   - Oracle: `terraform`, `oci`
   - AliCloud: `terraform`, `aliyun`
   - On-Premises: *(info and json only)*
-- **Optional - Custom prefix**: Desired subnet prefix (e.g., /26) to override auto-calculation
+- **Optional - Custom subnet prefix** (`--subnet-prefix`): Desired subnet prefix (e.g., /26) to override auto-calculation
+- **Optional - Resource name prefix** (`--prefix`): Prefix for resource names in generated IaC (default: `ipcalc`)
 - **Optional - Hub-spoke**: Spoke network CIDRs and subnet counts for hub-spoke topology
   > **Hub-spoke is only supported for Azure and GCP.** If the user requests hub-spoke for AWS, Oracle, AliCloud, or On-Premises, explain the limitation and suggest using a single VNet/VPC instead.
 
@@ -75,7 +76,7 @@ python ~/.claude/skills/ipcalc-for-cloud/scripts/ipcalc.py \
   --provider azure \
   --cidr "172.16.1.0/24" \
   --subnets 4 \
-  --prefix 26 \
+  --subnet-prefix 26 \
   --output info
 ```
 
@@ -164,7 +165,7 @@ Terraform with hub VNet + subnets, 2 spoke VNets + subnets, bidirectional peerin
 <anti_patterns>
 <pitfall name="filling_entire_network">
 ❌ Auto-calculating subnet size fills entire network, no room for growth
-✅ Use `--prefix` to specify smaller subnets, leave address space for future
+✅ Use `--subnet-prefix` to specify smaller subnets, leave address space for future
 </pitfall>
 
 <pitfall name="ignoring_provider_constraints">

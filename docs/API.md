@@ -31,7 +31,8 @@ GET /api/azure
 | `cidr` | Yes | string | Valid IPv4 CIDR, max 18 chars | Hub VNet CIDR block, e.g. `10.0.0.0/16` |
 | `subnets` | Yes | integer | 1–256 | Number of subnets |
 | `format` | Yes | string | See table below | Output format |
-| `prefix` | No | integer | 1–32 | Desired subnet prefix, e.g. `26` for `/26` |
+| `subnet-prefix` | No | integer | 1–32 | Desired subnet prefix, e.g. `26` for `/26` |
+| `prefix` | No | string | Starts with letter or digit; alphanumeric, hyphens, underscores; max 32 chars | Prefix for resource naming, e.g. `myapp` |
 | `spoke-cidrs` | No | string | Comma-separated, max 10 CIDRs | Spoke VNet CIDRs for hub-spoke topology |
 | `spoke-subnets` | No | string | Comma-separated integers 1–256 | Subnet counts per spoke (defaults to `2` each) |
 
@@ -44,6 +45,7 @@ GET /api/azure
 | `bicep` | `main.bicep` | `text/plain` |
 | `arm` | `azuredeploy.json` | `application/json` |
 | `powershell` | `deploy.ps1` | `text/plain` |
+| `d2` | `diagram.d2` | `text/plain` |
 
 ---
 
@@ -60,7 +62,8 @@ GET /api/aws
 | `cidr` | Yes | string | Valid IPv4 CIDR, max 18 chars | VPC CIDR block, e.g. `10.0.0.0/16` |
 | `subnets` | Yes | integer | 1–256 | Number of subnets |
 | `format` | Yes | string | See table below | Output format |
-| `prefix` | No | integer | 1–32 | Desired subnet prefix, e.g. `24` for `/24` |
+| `subnet-prefix` | No | integer | 1–32 | Desired subnet prefix, e.g. `24` for `/24` |
+| `prefix` | No | string | Starts with letter or digit; alphanumeric, hyphens, underscores; max 32 chars | Prefix for resource naming, e.g. `myapp` |
 
 #### Output formats
 
@@ -85,7 +88,8 @@ GET /api/gcp
 | `cidr` | Yes | string | Valid IPv4 CIDR, max 18 chars | Hub VPC CIDR block, e.g. `10.0.0.0/16` |
 | `subnets` | Yes | integer | 1–256 | Number of subnets |
 | `format` | Yes | string | See table below | Output format |
-| `prefix` | No | integer | 1–32 | Desired subnet prefix, e.g. `24` for `/24` |
+| `subnet-prefix` | No | integer | 1–32 | Desired subnet prefix, e.g. `24` for `/24` |
+| `prefix` | No | string | Starts with letter or digit; alphanumeric, hyphens, underscores; max 32 chars | Prefix for resource naming, e.g. `myapp` |
 | `spoke-cidrs` | No | string | Comma-separated, max 10 CIDRs | Spoke VPC CIDRs for hub-spoke topology |
 | `spoke-subnets` | No | string | Comma-separated integers 1–256 | Subnet counts per spoke (defaults to `2` each) |
 
@@ -122,7 +126,13 @@ curl "https://ipcalc.example.com/api/azure?cidr=10.0.0.0/16&subnets=4&format=bic
 ### Azure: Custom subnet prefix
 
 ```bash
-curl "https://ipcalc.example.com/api/azure?cidr=10.0.0.0/8&subnets=4&format=terraform&prefix=24" > main.tf
+curl "https://ipcalc.example.com/api/azure?cidr=10.0.0.0/8&subnets=4&format=terraform&subnet-prefix=24" > main.tf
+```
+
+### Azure: Custom resource name prefix
+
+```bash
+curl "https://ipcalc.example.com/api/azure?cidr=10.0.0.0/16&subnets=4&format=terraform&prefix=myapp" > main.tf
 ```
 
 ### Azure: Hub-spoke topology
@@ -142,6 +152,12 @@ terraform init && terraform apply
 
 ```bash
 curl "https://ipcalc.example.com/api/aws?cidr=172.16.0.0/24&subnets=4&format=cli" | bash
+```
+
+### AWS: Custom resource name prefix
+
+```bash
+curl "https://ipcalc.example.com/api/aws?cidr=10.0.0.0/16&subnets=4&format=terraform&prefix=myapp" > main.tf
 ```
 
 ### AWS: Save a CloudFormation template
@@ -278,13 +294,13 @@ $ curl "https://ipcalc.example.com/api/aws?cidr=10.0.0.0/16&subnets=0&format=ter
   "detail": "subnets: Input should be greater than or equal to 1"
 }
 
-# prefix out of range
-$ curl "https://ipcalc.example.com/api/aws?cidr=10.0.0.0/16&subnets=4&format=terraform&prefix=33"
+# subnet-prefix out of range
+$ curl "https://ipcalc.example.com/api/aws?cidr=10.0.0.0/16&subnets=4&format=terraform&subnet-prefix=33"
 {
   "type": "about:blank",
   "title": "Unprocessable Content",
   "status": 422,
-  "detail": "prefix: Input should be less than or equal to 32"
+  "detail": "subnet-prefix: Input should be less than or equal to 32"
 }
 ```
 
@@ -311,8 +327,9 @@ Every string input is validated before any processing occurs:
 
 - **CIDR values** are parsed and normalized by Python's `ipaddress.ip_network()`. This rejects anything that is not a valid IPv4 CIDR (including IPv6, hostnames, and strings containing shell metacharacters). The normalized form — which can only contain digits, dots, and a slash — is what gets embedded in generated files.
 - **Format** is checked against a strict allowlist before template selection.
-- **`prefix`** is constrained to the integer range 1–32 by the query parameter definition.
+- **`subnet-prefix`** is constrained to the integer range 1–32 by the query parameter definition.
 - **`subnets`** is constrained to 1–256.
+- **`prefix`** is validated against the pattern `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}$`: must start with a letter or digit, followed by letters, digits, hyphens, or underscores, up to 32 characters total.
 - **`spoke-cidrs`** is limited to a maximum of 10 entries, each independently validated as a CIDR.
 - **`spoke-subnets`** values must each be in the range 1–256.
 - All string parameters have a maximum length enforced at the HTTP layer.
@@ -343,7 +360,8 @@ https://ipcalc.example.com/?provider=azure&cidr=10.0.0.0/16&subnets=4&format=ter
 | `cidr` | Pre-fill the CIDR field |
 | `subnets` | Pre-fill the subnet count |
 | `format` | Auto-open this output format's dialog |
-| `prefix` | Pre-fill the desired subnet prefix |
+| `subnet-prefix` | Pre-fill the desired subnet prefix |
+| `prefix` | Pre-fill the resource name prefix |
 | `spoke-cidrs` | Pre-fill spoke CIDRs (enables hub-spoke mode) |
 | `spoke-subnets` | Pre-fill spoke subnet counts |
 

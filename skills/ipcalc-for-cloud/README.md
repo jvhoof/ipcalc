@@ -56,7 +56,7 @@ python scripts/ipcalc.py --provider azure --cidr "10.0.0.0/16" --subnets 4
 ### Custom Subnet Prefix
 
 ```bash
-python scripts/ipcalc.py --provider azure --cidr "172.16.1.0/24" --subnets 4 --prefix 26
+python scripts/ipcalc.py --provider azure --cidr "172.16.1.0/24" --subnets 4 --subnet-prefix 26
 ```
 
 ### Hub-Spoke Topology

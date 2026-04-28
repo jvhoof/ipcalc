@@ -143,7 +143,7 @@ def _validate_name_prefix(value: str) -> str:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"'name-prefix' value '{value}' is invalid. "
+                f"'prefix' value '{value}' is invalid. "
                 "It must start with a letter or digit and contain only "
                 "letters, digits, hyphens, or underscores (max 32 characters)."
             ),
@@ -255,8 +255,8 @@ def generate_azure(
     cidr: str = Query(..., max_length=_CIDR_MAX_LEN, description='Hub VNet CIDR, e.g. 10.0.0.0/16'),
     subnets: int = Query(..., ge=1, le=256, description='Number of subnets'),
     format: str = Query(..., description='Output format: terraform, cli, bicep, arm, powershell'),
-    prefix: int | None = Query(None, ge=1, le=32, description='Optional desired subnet prefix, e.g. 26 for /26'),
-    name_prefix: str | None = Query(None, alias='name-prefix', max_length=32, description='Prefix for resource naming, e.g. myapp'),
+    subnet_prefix: int | None = Query(None, alias='subnet-prefix', ge=1, le=32, description='Optional desired subnet prefix, e.g. 26 for /26'),
+    prefix: str | None = Query(None, max_length=32, description='Prefix for resource naming, e.g. myapp'),
     spoke_cidrs: str | None = Query(None, alias='spoke-cidrs', max_length=_SPOKE_LIST_MAX_LEN, description='Comma-separated spoke VNet CIDRs'),
     spoke_subnets: str | None = Query(None, alias='spoke-subnets', max_length=64, description='Comma-separated spoke subnet counts'),
 ) -> Response:
@@ -270,8 +270,8 @@ def generate_azure(
         )
 
     cidr = _validate_cidr(cidr)
-    if name_prefix is not None:
-        name_prefix = _validate_name_prefix(name_prefix)
+    if prefix is not None:
+        prefix = _validate_name_prefix(prefix)
 
     spoke_cidrs_list: list[str] = []
     spoke_subnets_list: list[int] = []
@@ -286,14 +286,14 @@ def generate_azure(
 
     if spoke_cidrs_list:
         result = generate_hub_spoke_topology(
-            cidr, subnets, spoke_cidrs_list, spoke_subnets_list, 'azure', prefix
+            cidr, subnets, spoke_cidrs_list, spoke_subnets_list, 'azure', subnet_prefix
         )
         if 'error' in result:
             raise HTTPException(status_code=400, detail=result['error'])
         hub_subnets = result['hub']['subnets']
         spoke_vnets = result['spokes']
     else:
-        result = calculate_subnets(cidr, subnets, 'azure', prefix)
+        result = calculate_subnets(cidr, subnets, 'azure', subnet_prefix)
         if 'error' in result:
             raise HTTPException(status_code=400, detail=result['error'])
         hub_subnets = result['subnets']
@@ -304,7 +304,7 @@ def generate_azure(
         'subnets': hub_subnets,
         'peeringEnabled': len(spoke_vnets) > 0,
         'spokeVNets': spoke_vnets,
-        **(({'namePrefix': name_prefix}) if name_prefix else {}),
+        **(({'namePrefix': prefix}) if prefix else {}),
     }
 
     if format == 'd2':
@@ -329,8 +329,8 @@ def generate_aws(
     cidr: str = Query(..., max_length=_CIDR_MAX_LEN, description='VPC CIDR, e.g. 10.0.0.0/16'),
     subnets: int = Query(..., ge=1, le=256, description='Number of subnets'),
     format: str = Query(..., description='Output format: terraform, cli, cloudformation'),
-    prefix: int | None = Query(None, ge=1, le=32, description='Optional desired subnet prefix, e.g. 24 for /24'),
-    name_prefix: str | None = Query(None, alias='name-prefix', max_length=32, description='Prefix for resource naming, e.g. myapp'),
+    subnet_prefix: int | None = Query(None, alias='subnet-prefix', ge=1, le=32, description='Optional desired subnet prefix, e.g. 24 for /24'),
+    prefix: str | None = Query(None, max_length=32, description='Prefix for resource naming, e.g. myapp'),
 ) -> Response:
     if format not in AWS_FORMAT_CONFIG:
         raise HTTPException(
@@ -342,17 +342,17 @@ def generate_aws(
         )
 
     cidr = _validate_cidr(cidr)
-    if name_prefix is not None:
-        name_prefix = _validate_name_prefix(name_prefix)
+    if prefix is not None:
+        prefix = _validate_name_prefix(prefix)
 
-    result = calculate_subnets(cidr, subnets, 'aws', prefix)
+    result = calculate_subnets(cidr, subnets, 'aws', subnet_prefix)
     if 'error' in result:
         raise HTTPException(status_code=400, detail=result['error'])
 
     data = {
         'vpcCidr': cidr,
         'subnets': result['subnets'],
-        **(({'namePrefix': name_prefix}) if name_prefix else {}),
+        **(({'namePrefix': prefix}) if prefix else {}),
     }
 
     try:
@@ -373,8 +373,8 @@ def generate_gcp(
     cidr: str = Query(..., max_length=_CIDR_MAX_LEN, description='Hub VPC CIDR, e.g. 10.0.0.0/16'),
     subnets: int = Query(..., ge=1, le=256, description='Number of subnets'),
     format: str = Query(..., description='Output format: terraform, gcloud'),
-    prefix: int | None = Query(None, ge=1, le=32, description='Optional desired subnet prefix, e.g. 24 for /24'),
-    name_prefix: str | None = Query(None, alias='name-prefix', max_length=32, description='Prefix for resource naming, e.g. myapp'),
+    subnet_prefix: int | None = Query(None, alias='subnet-prefix', ge=1, le=32, description='Optional desired subnet prefix, e.g. 24 for /24'),
+    prefix: str | None = Query(None, max_length=32, description='Prefix for resource naming, e.g. myapp'),
     spoke_cidrs: str | None = Query(None, alias='spoke-cidrs', max_length=_SPOKE_LIST_MAX_LEN, description='Comma-separated spoke VPC CIDRs'),
     spoke_subnets: str | None = Query(None, alias='spoke-subnets', max_length=64, description='Comma-separated spoke subnet counts'),
 ) -> Response:
@@ -388,8 +388,8 @@ def generate_gcp(
         )
 
     cidr = _validate_cidr(cidr)
-    if name_prefix is not None:
-        name_prefix = _validate_name_prefix(name_prefix)
+    if prefix is not None:
+        prefix = _validate_name_prefix(prefix)
 
     spoke_cidrs_list: list[str] = []
     spoke_subnets_list: list[int] = []
@@ -404,14 +404,14 @@ def generate_gcp(
 
     if spoke_cidrs_list:
         result = generate_hub_spoke_topology(
-            cidr, subnets, spoke_cidrs_list, spoke_subnets_list, 'gcp', prefix
+            cidr, subnets, spoke_cidrs_list, spoke_subnets_list, 'gcp', subnet_prefix
         )
         if 'error' in result:
             raise HTTPException(status_code=400, detail=result['error'])
         hub_subnets = result['hub']['subnets']
         spoke_vpcs = result['spokes']
     else:
-        result = calculate_subnets(cidr, subnets, 'gcp', prefix)
+        result = calculate_subnets(cidr, subnets, 'gcp', subnet_prefix)
         if 'error' in result:
             raise HTTPException(status_code=400, detail=result['error'])
         hub_subnets = result['subnets']
@@ -422,7 +422,7 @@ def generate_gcp(
         'subnets': hub_subnets,
         'peeringEnabled': len(spoke_vpcs) > 0,
         'spokeVPCs': spoke_vpcs,
-        **(({'namePrefix': name_prefix}) if name_prefix else {}),
+        **(({'namePrefix': prefix}) if prefix else {}),
     }
 
     try:

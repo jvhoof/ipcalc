@@ -54,7 +54,8 @@ chmod +x scripts/ipcalc.py
 
 | Option | Description | Example |
 |--------|-------------|---------|
-| `--prefix` | Custom subnet CIDR prefix (e.g., 26 for /26) | `26` |
+| `--subnet-prefix` | Custom subnet CIDR prefix (e.g., 26 for /26) | `26` |
+| `--prefix` | Resource naming prefix for generated IaC (default: `ipcalc`) | `myapp` |
 | `--output` | Output format (info, json, terraform, etc.) | `terraform` |
 | `--file` | Write output to file instead of stdout | `output.tf` |
 | `--spoke-cidrs` | Comma-separated spoke VNet/VPC CIDRs (hub-spoke) | `10.1.0.0/16,10.2.0.0/16` |
@@ -95,7 +96,7 @@ python3 scripts/ipcalc.py \
   --provider aws \
   --cidr "172.16.1.0/24" \
   --subnets 4 \
-  --prefix 26 \
+  --subnet-prefix 26 \
   --output info
 ```
 
@@ -300,7 +301,7 @@ OK
 5. **Test edge cases** before deploying to production environments
 6. **Document assumptions** about network sizes and growth
 7. **Consider future growth** when selecting base CIDR blocks
-8. **Use custom prefix** (`--prefix`) to avoid filling entire network space
+8. **Use custom subnet prefix** (`--subnet-prefix`) to avoid filling entire network space
 
 ## Troubleshooting
 

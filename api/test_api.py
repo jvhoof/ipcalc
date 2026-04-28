@@ -49,9 +49,9 @@ class TestGcpTerraform:
         assert resp.status_code == 200
         assert 'main.tf' in resp.headers['content-disposition']
 
-    def test_custom_prefix(self):
-        # prefix=20 matches the natural split of 16 subnets in a /16 (16+4=20)
-        resp = client.get('/api/gcp', params={'cidr': '10.0.0.0/16', 'subnets': 16, 'format': 'terraform', 'prefix': 20})
+    def test_custom_subnet_prefix(self):
+        # subnet-prefix=20 matches the natural split of 16 subnets in a /16 (16+4=20)
+        resp = client.get('/api/gcp', params={'cidr': '10.0.0.0/16', 'subnets': 16, 'format': 'terraform', 'subnet-prefix': 20})
         assert resp.status_code == 200
         assert '10.0.0.0/20' in resp.text
 
@@ -214,10 +214,10 @@ class TestRFC9457Compliance:
         body = assert_problem(resp, 422)
         assert 'subnets' in body['detail']
 
-    def test_422_prefix_too_large(self):
-        resp = client.get('/api/aws', params={'cidr': '10.0.0.0/16', 'subnets': 2, 'format': 'terraform', 'prefix': 33})
+    def test_422_subnet_prefix_too_large(self):
+        resp = client.get('/api/aws', params={'cidr': '10.0.0.0/16', 'subnets': 2, 'format': 'terraform', 'subnet-prefix': 33})
         body = assert_problem(resp, 422)
-        assert 'prefix' in body['detail']
+        assert 'subnet-prefix' in body['detail']
 
     def test_problem_content_type_on_400(self):
         resp = client.get('/api/gcp', params={'cidr': '10.0.0.0/16', 'subnets': 2, 'format': 'arm'})
@@ -278,11 +278,21 @@ class TestAws:
         resp = client.get('/api/aws', params={'cidr': '10.0.0.0/16', 'subnets': 2, 'format': 'gcloud'})
         assert_problem(resp, 400)
 
-    def test_custom_prefix(self):
-        # prefix=20 matches the natural split of 16 subnets in a /16 (16+4=20)
-        resp = client.get('/api/aws', params={'cidr': '10.0.0.0/16', 'subnets': 16, 'format': 'terraform', 'prefix': 20})
+    def test_custom_subnet_prefix(self):
+        # subnet-prefix=20 matches the natural split of 16 subnets in a /16 (16+4=20)
+        resp = client.get('/api/aws', params={'cidr': '10.0.0.0/16', 'subnets': 16, 'format': 'terraform', 'subnet-prefix': 20})
         assert resp.status_code == 200
         assert '10.0.0.0/20' in resp.text
+
+    def test_name_prefix(self):
+        resp = client.get('/api/aws', params={'cidr': '10.0.0.0/16', 'subnets': 2, 'format': 'terraform', 'prefix': 'myapp'})
+        assert resp.status_code == 200
+        assert 'myapp' in resp.text
+
+    def test_invalid_name_prefix(self):
+        resp = client.get('/api/aws', params={'cidr': '10.0.0.0/16', 'subnets': 2, 'format': 'terraform', 'prefix': '-bad'})
+        body = assert_problem(resp, 400)
+        assert 'prefix' in body['detail']
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +324,21 @@ class TestAzure:
         })
         assert resp.status_code == 200
         assert 'azurerm_virtual_network_peering' in resp.text
+
+    def test_name_prefix(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 2, 'format': 'terraform', 'prefix': 'myapp'})
+        assert resp.status_code == 200
+        assert 'myapp' in resp.text
+
+    def test_custom_subnet_prefix(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 16, 'format': 'terraform', 'subnet-prefix': 20})
+        assert resp.status_code == 200
+        assert '10.0.0.0/20' in resp.text
+
+    def test_invalid_name_prefix(self):
+        resp = client.get('/api/azure', params={'cidr': '10.0.0.0/16', 'subnets': 2, 'format': 'terraform', 'prefix': '-bad'})
+        body = assert_problem(resp, 400)
+        assert 'prefix' in body['detail']
 
 
 # ---------------------------------------------------------------------------

@@ -392,7 +392,7 @@ Examples:
   %(prog)s --provider azure --cidr 10.0.0.0/16 --subnets 4
 
   # Use custom subnet prefix
-  %(prog)s --provider azure --cidr 172.16.1.0/24 --subnets 4 --prefix 26
+  %(prog)s --provider azure --cidr 172.16.1.0/24 --subnets 4 --subnet-prefix 26
 
   # Generate Terraform for AWS
   %(prog)s --provider aws --cidr 10.0.0.0/16 --subnets 3 --output terraform
@@ -404,7 +404,7 @@ Examples:
 
   # Custom resource name prefix
   %(prog)s --provider azure --cidr 10.0.0.0/16 --subnets 4 \\
-    --name-prefix myapp --output terraform
+    --prefix myapp --output terraform
         """
     )
 
@@ -429,12 +429,12 @@ Examples:
 
     # Optional arguments
     parser.add_argument(
-        "--prefix",
+        "--subnet-prefix",
         type=int,
         help="Desired subnet CIDR prefix (e.g., 26 for /26)"
     )
     parser.add_argument(
-        "--name-prefix",
+        "--prefix",
         default="ipcalc",
         help="Prefix for resource naming in generated IaC (default: ipcalc)"
     )
@@ -508,7 +508,7 @@ Examples:
                 spoke_cidrs,
                 spoke_subnets_list,
                 args.provider,
-                args.prefix
+                args.subnet_prefix
             )
 
             if "error" in result:
@@ -519,7 +519,7 @@ Examples:
             spoke_vnets = result["spokes"]
         else:
             # Single VNet/VPC
-            result = calculate_subnets(args.cidr, args.subnets, args.provider, args.prefix)
+            result = calculate_subnets(args.cidr, args.subnets, args.provider, args.subnet_prefix)
 
             if "error" in result:
                 print(f"Error: {result['error']}", file=sys.stderr)
@@ -557,7 +557,7 @@ Examples:
                 "vpcCidr": args.cidr,  # AWS uses vpcCidr
                 "subnets": subnets,
                 "peeringEnabled": len(spoke_vnets) > 0,
-                "namePrefix": args.name_prefix,
+                "namePrefix": args.prefix,
             }
             if spoke_vnets:
                 if args.provider == 'azure':

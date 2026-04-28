@@ -1097,16 +1097,16 @@ onMounted(async () => {
   // Pre-populate form from URL params
   const urlCidr = params.get('cidr')
   const urlSubnets = params.get('subnets')
+  const urlSubnetPrefix = params.get('subnet-prefix')
   const urlPrefix = params.get('prefix')
-  const urlNamePrefix = params.get('name-prefix')
   const urlFormat = params.get('format')
   const urlSpokeCidrs = params.get('spoke-cidrs')
   const urlSpokeSubnets = params.get('spoke-subnets')
 
   if (urlCidr) vnetCidr.value = urlCidr
   if (urlSubnets) numberOfSubnets.value = parseInt(urlSubnets, 10)
-  if (urlPrefix) desiredSubnetPrefix.value = parseInt(urlPrefix, 10)
-  if (urlNamePrefix) namePrefix.value = urlNamePrefix
+  if (urlSubnetPrefix) desiredSubnetPrefix.value = parseInt(urlSubnetPrefix, 10)
+  if (urlPrefix) namePrefix.value = urlPrefix
 
   if (urlSpokeCidrs) {
     const cidrs = urlSpokeCidrs.split(',').map(c => c.trim()).filter(Boolean)

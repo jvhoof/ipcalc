@@ -34,13 +34,14 @@ Both implementations support all 6 cloud providers with identical output formats
 | `--provider` / `-p` | ✅ | ✅ | |
 | `--cidr` / `-c` | ✅ | ✅ | |
 | `--subnets` / `-s` | ✅ | ✅ | |
-| `--prefix` | ✅ | ✅ | Custom subnet CIDR prefix |
+| `--subnet-prefix` | ✅ | ✅ | Custom subnet CIDR prefix |
+| `--prefix` | ✅ | ✅ | Resource naming prefix (default: `ipcalc`) |
 | `--output` / `-o` | ✅ | ✅ | Default: `info` |
 | `--file` / `-f` | ✅ | ✅ | Write output to file |
 | `--spoke-cidrs` | ✅ | ✅ | Hub-spoke: comma-separated CIDRs |
 | `--spoke-subnets` | ✅ | ✅ | Hub-spoke: subnet counts per spoke |
 | **Other** | | | |
-| Custom subnet prefix (`--prefix`) | ✅ | ✅ | Override auto-calculated size |
+| Custom subnet prefix (`--subnet-prefix`) | ✅ | ✅ | Override auto-calculated size |
 | AZ round-robin distribution | ✅ | ✅ | Provider-specific zone lists |
 | Provider-specific reserved IPs | ✅ | ✅ | Azure/AWS: 5, GCP: 4, Oracle: 3, AliCloud: 4 |
 

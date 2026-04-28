@@ -98,7 +98,7 @@ Hub-Spoke (Azure/GCP only):
 python scripts/ipcalc.py --provider azure --cidr 10.0.0.0/16 --subnets 4 --output terraform
 
 # Custom subnet prefix
-python scripts/ipcalc.py --provider aws --cidr 172.16.0.0/16 --subnets 4 --prefix 26
+python scripts/ipcalc.py --provider aws --cidr 172.16.0.0/16 --subnets 4 --subnet-prefix 26
 
 # Hub-spoke
 python scripts/ipcalc.py --provider azure --cidr 10.0.0.0/16 --subnets 2 \

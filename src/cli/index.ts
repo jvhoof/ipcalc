@@ -34,8 +34,8 @@ interface CliArgs {
   provider: string
   cidr: string
   subnets: number
-  prefix?: number
-  namePrefix?: string
+  subnetPrefix?: number
+  prefix?: string
   output?: 'info' | 'cli' | 'terraform' | 'bicep' | 'arm' | 'powershell' | 'cloudformation' | 'gcloud' | 'oci' | 'aliyun'
   file?: string
   help?: boolean
@@ -68,10 +68,10 @@ Required Arguments:
   --subnets <count>     Number of subnets to create (1-256)
 
 Optional Arguments:
-  --prefix <number>     Desired subnet CIDR prefix (e.g., 26 for /26)
+  --subnet-prefix <num> Desired subnet CIDR prefix (e.g., 26 for /26)
                         When specified, subnets will use this prefix instead
                         of automatic calculation based on subnet count
-  --name-prefix <name>  Prefix for resource naming in generated IaC (default: ipcalc)
+  --prefix <name>       Prefix for resource naming in generated IaC (default: ipcalc)
                         Used in resource names like ipcalc-vnet, ipcalc-rg
                         Azure only: alphanumeric, hyphens, underscores (max 32 chars)
   --output <type>       Output type (default: info)
@@ -97,7 +97,7 @@ Examples:
   ipcalc --provider azure --cidr 10.0.0.0/16 --subnets 4
 
   # Use custom subnet prefix to avoid filling entire network
-  ipcalc --provider azure --cidr 172.16.1.0/24 --subnets 4 --prefix 26
+  ipcalc --provider azure --cidr 172.16.1.0/24 --subnets 4 --subnet-prefix 26
 
   # Generate Terraform for AWS
   ipcalc --provider aws --cidr 10.0.0.0/16 --subnets 3 --output terraform
@@ -151,12 +151,12 @@ function parseArgs(): CliArgs | null {
         args.subnets = parseInt(nextArg || '0', 10)
         i++
         break
-      case '--prefix':
-        args.prefix = parseInt(nextArg || '0', 10)
+      case '--subnet-prefix':
+        args.subnetPrefix = parseInt(nextArg || '0', 10)
         i++
         break
-      case '--name-prefix':
-        args.namePrefix = nextArg
+      case '--prefix':
+        args.prefix = nextArg
         i++
         break
       case '--output':
@@ -292,7 +292,7 @@ function generateOutput(args: CliArgs, subnets: SubnetInfo[], spokeVNets: any[])
     vnetCidr: args.cidr,
     subnets: subnets,
     peeringEnabled: spokeVNets.length > 0,
-    namePrefix: args.namePrefix
+    namePrefix: args.prefix
   }
 
   // Azure uses spokeVNets, GCP uses spokeVPCs
@@ -382,7 +382,7 @@ function main(): void {
   const config = getCloudProviderConfig(args.provider as any)
 
   // Calculate subnets
-  const { subnets, error } = calculateSubnets(args.cidr, args.subnets, config, args.prefix)
+  const { subnets, error } = calculateSubnets(args.cidr, args.subnets, config, args.subnetPrefix)
 
   if (error) {
     console.error(`Error: ${error}`)
