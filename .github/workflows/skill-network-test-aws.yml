@@ -297,13 +297,15 @@ jobs:
 
           echo "Running AWS CLI deployment script..."
           chmod +x /tmp/deploy-aws.sh
-          /tmp/deploy-aws.sh
+          /tmp/deploy-aws.sh 2>&1 | tee /tmp/deploy-output.txt
 
-          # Retrieve VPC ID from the created VPC
-          VPC_ID=$(aws ec2 describe-vpcs \
-            --filters "Name=tag:Name,Values=${{ env.JOB_PREFIX }}-vpc" \
-            --query "Vpcs[0].VpcId" \
-            --output text)
+          # Extract VPC ID from script output (avoids tag propagation race condition)
+          VPC_ID=$(grep "^VPC ID:" /tmp/deploy-output.txt | head -1 | awk '{print $NF}')
+
+          if [ -z "$VPC_ID" ] || [ "$VPC_ID" == "None" ]; then
+            echo "❌ Failed to retrieve VPC ID from deployment output"
+            exit 1
+          fi
 
           echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
           echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
