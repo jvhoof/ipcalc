@@ -22,9 +22,11 @@ on:
   push:
     branches:
       - main  # Trigger on push to beta branch
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'skills/**'
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/cli-test-aws-vpc.yml'
 
 env:
   # Workflow parameters - workflow_dispatch inputs take precedence over env vars

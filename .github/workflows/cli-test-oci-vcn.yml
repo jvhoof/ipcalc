@@ -22,9 +22,11 @@ on:
   push:
     branches:
       - main  # Trigger on push to main branch
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'skills/**'
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/cli-test-oci-vcn.yml'
 
 env:
   # Workflow parameters - workflow_dispatch inputs take precedence over env vars
