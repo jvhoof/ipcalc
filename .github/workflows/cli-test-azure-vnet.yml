@@ -277,24 +277,6 @@ jobs:
         id: generate-script
         run: |
           echo "Generating Azure CLI script using ipcalc CLI..."
-          echo "Parameters:"
-          echo "  Provider: azure"
-          echo "  CIDR: ${{ env.VNET_CIDR }}"
-          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
-          echo "  Location: ${{ env.AZURE_LOCATION }}"
-          echo "  Prefix: ${{ env.RESOURCE_PREFIX }}"
- 
-          # Generate Azure CLI script using ipcalc CLI
-          npm run cli -- \
-            --provider azure \
-            --cidr ${{ env.VNET_CIDR }} \
-            --subnets ${{ env.SUBNET_COUNT }} \
-            --output cli \
-            --file /tmp/deploy-vnet-generated.sh
- 
-          echo "Azure CLI script generated successfully"
-          echo "Generated script contents:"
-          cat /tmp/deploy-vnet-generated.sh
 
           # Set unique names for this job
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
@@ -305,8 +287,25 @@ jobs:
           echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
           echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
 
-          # Customize the script with our specific environment values
-          sed -i "s/PREFIX=\"myproject\"/PREFIX=\"${JOB_PREFIX}\"/" /tmp/deploy-vnet-generated.sh
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  CIDR: ${{ env.VNET_CIDR }}"
+          echo "  Subnets: ${{ env.SUBNET_COUNT }}"
+          echo "  Location: ${{ env.AZURE_LOCATION }}"
+          echo "  Prefix: ${JOB_PREFIX}"
+
+          # Generate Azure CLI script using ipcalc CLI
+          npm run cli -- \
+            --provider azure \
+            --cidr ${{ env.VNET_CIDR }} \
+            --subnets ${{ env.SUBNET_COUNT }} \
+            --prefix "${JOB_PREFIX}" \
+            --output cli \
+            --file /tmp/deploy-vnet-generated.sh
+
+          echo "Azure CLI script generated successfully"
+
+          # Patch the location (no --location flag in the CLI yet)
           sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-generated.sh
 
           # Make it executable
@@ -716,18 +715,29 @@ jobs:
         id: generate-powershell
         run: |
           echo "Generating PowerShell script using ipcalc CLI..."
+
+          # Set unique names for this job
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          RG_NAME="${JOB_PREFIX}-rg"
+          VNET_NAME="${JOB_PREFIX}-vnet"
+
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
+          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
+
           echo "Parameters:"
           echo "  Provider: azure"
           echo "  CIDR: ${{ env.VNET_CIDR }}"
           echo "  Subnets: ${{ env.SUBNET_COUNT }}"
           echo "  Location: ${{ env.AZURE_LOCATION }}"
-          echo "  Prefix: ${{ env.RESOURCE_PREFIX }}"
+          echo "  Prefix: ${JOB_PREFIX}"
 
           # Generate PowerShell script using ipcalc CLI
           npm run cli -- \
             --provider azure \
             --cidr ${{ env.VNET_CIDR }} \
             --subnets ${{ env.SUBNET_COUNT }} \
+            --prefix "${JOB_PREFIX}" \
             --output powershell \
             --file /tmp/test-powershell.ps1
 
@@ -753,15 +763,7 @@ jobs:
 
       - name: Set Unique Names
         run: |
-          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
-          RG_NAME="${JOB_PREFIX}-rg"
-          VNET_NAME="${JOB_PREFIX}-vnet"
-          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
-          echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
-          echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
-
-          # Customize the PowerShell script with unique values
-          sed -i "s/\$Prefix = \"myproject\"/\$Prefix = \"${JOB_PREFIX}\"/" /tmp/test-powershell.ps1
+          # Patch the location (no --location flag in the CLI yet)
           sed -i 's/$Location = "eastus"/$Location = "${{ env.AZURE_LOCATION }}"/' /tmp/test-powershell.ps1
 
           echo "Customized PowerShell script:"
@@ -1137,22 +1139,6 @@ jobs:
         id: generate-script
         run: |
           echo "Generating Azure CLI script with VNET peering using ipcalc CLI..."
-          echo "Parameters:"
-          echo "  Provider: azure"
-          echo "  Hub CIDR: 10.0.0.0/16"
-          echo "  Hub Subnets: 2"
-          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
-          echo "  Spoke Subnets: 2,2,2"
-
-          # Generate Azure CLI script with VNET peering
-          npm run cli -- \
-            --provider azure \
-            --cidr 10.0.0.0/16 \
-            --subnets 2 \
-            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
-            --spoke-subnets "2,2,2" \
-            --output cli \
-            --file /tmp/deploy-vnet-peering-generated.sh
 
           # Set unique names for this job
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
@@ -1163,8 +1149,26 @@ jobs:
           echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
           echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
 
-          # Customize the script
-          sed -i "s/PREFIX=\"myproject\"/PREFIX=\"${JOB_PREFIX}\"/" /tmp/deploy-vnet-peering-generated.sh
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  Hub CIDR: 10.0.0.0/16"
+          echo "  Hub Subnets: 2"
+          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
+          echo "  Spoke Subnets: 2,2,2"
+          echo "  Prefix: ${JOB_PREFIX}"
+
+          # Generate Azure CLI script with VNET peering
+          npm run cli -- \
+            --provider azure \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --prefix "${JOB_PREFIX}" \
+            --output cli \
+            --file /tmp/deploy-vnet-peering-generated.sh
+
+          # Patch the location (no --location flag in the CLI yet)
           sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-peering-generated.sh
           chmod +x /tmp/deploy-vnet-peering-generated.sh
 
@@ -1706,22 +1710,6 @@ jobs:
         id: generate-script
         run: |
           echo "Generating PowerShell script with VNET peering using ipcalc CLI..."
-          echo "Parameters:"
-          echo "  Provider: azure"
-          echo "  Hub CIDR: 10.0.0.0/16"
-          echo "  Hub Subnets: 2"
-          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
-          echo "  Spoke Subnets: 2,2,2"
-
-          # Generate PowerShell script with VNET peering
-          npm run cli -- \
-            --provider azure \
-            --cidr 10.0.0.0/16 \
-            --subnets 2 \
-            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
-            --spoke-subnets "2,2,2" \
-            --output powershell \
-            --file /tmp/deploy-vnet-peering-generated.ps1
 
           # Set unique names for this job
           JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
@@ -1732,8 +1720,26 @@ jobs:
           echo "RESOURCE_GROUP=$RG_NAME" >> $GITHUB_ENV
           echo "VNET_NAME=$VNET_NAME" >> $GITHUB_ENV
 
-          # Customize the script
-          sed -i "s/\$Prefix = \"myproject\"/\$Prefix = \"${JOB_PREFIX}\"/" /tmp/deploy-vnet-peering-generated.ps1
+          echo "Parameters:"
+          echo "  Provider: azure"
+          echo "  Hub CIDR: 10.0.0.0/16"
+          echo "  Hub Subnets: 2"
+          echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
+          echo "  Spoke Subnets: 2,2,2"
+          echo "  Prefix: ${JOB_PREFIX}"
+
+          # Generate PowerShell script with VNET peering
+          npm run cli -- \
+            --provider azure \
+            --cidr 10.0.0.0/16 \
+            --subnets 2 \
+            --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
+            --spoke-subnets "2,2,2" \
+            --prefix "${JOB_PREFIX}" \
+            --output powershell \
+            --file /tmp/deploy-vnet-peering-generated.ps1
+
+          # Patch the location (no --location flag in the CLI yet)
           sed -i 's/$Location = "eastus"/$Location = "${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-peering-generated.ps1
 
           echo "Customized PowerShell script:"
