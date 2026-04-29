@@ -29,7 +29,7 @@ on:
 
 env:
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.OCI_RESOURCE_PREFIX || 'ipcalc-test' }}
-  OCI_REGION: ${{ github.event.inputs.region || vars.OCI_REGION || 'eu-frankfurt-1' }}
+  OCI_REGION: ${{ github.event.inputs.region || vars.OCI_REGION || 'eu-stockholm-1' }}
   VCN_CIDR: ${{ github.event.inputs.vcn_cidr || vars.OCI_VCN_CIDR || '172.16.1.0/24' }}
   SUBNET_COUNT: ${{ github.event.inputs.subnet_count || vars.OCI_SUBNET_COUNT || '4' }}
 
