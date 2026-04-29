@@ -159,8 +159,8 @@ class AzureDiagramGenerator:
         cidr: str,
         subnets: list[dict[str, Any]],
     ) -> str:
-        # D2 does not allow shape:image on a node that has children, so the
-        # VNet is a plain styled container. Subnets are leaf nodes with icons.
+        # VNet is a container (has children) so it cannot use shape:image.
+        # Subnets omit shape:image so D2 renders them as styled boxes with the icon inside.
         icon_url = f"{self.ICON_BASE_URL}/{self._ICON_PATHS['subnet']}"
         lines = [
             f"{vnet_id}: \"{label}\" {{",
@@ -172,7 +172,6 @@ class AzureDiagramGenerator:
             lines.append(
                 f"  {subnet_id}: \"{subnet_label}\" {{\n"
                 f"    class: subnet\n"
-                f"    shape: image\n"
                 f"    icon: {icon_url}\n"
                 f"  }}"
             )
