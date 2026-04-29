@@ -292,6 +292,7 @@ jobs:
             --provider azure \
             --cidr "${{ env.VNET_CIDR }}" \
             --subnets ${{ env.SUBNET_COUNT }} \
+            --prefix "${{ env.JOB_PREFIX }}" \
             --output cli \
             --file /tmp/deploy-vnet-generated.sh
 
@@ -299,8 +300,7 @@ jobs:
           echo "Generated script contents:"
           cat /tmp/deploy-vnet-generated.sh
 
-          # Customize the script with unique values
-          sed -i "s/PREFIX=\"myproject\"/PREFIX=\"${{ env.JOB_PREFIX }}\"/" /tmp/deploy-vnet-generated.sh
+          # Patch the location (no --location flag in the CLI yet)
           sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-generated.sh
 
           chmod +x /tmp/deploy-vnet-generated.sh
@@ -726,6 +726,7 @@ jobs:
             --provider azure \
             --cidr "${{ env.VNET_CIDR }}" \
             --subnets ${{ env.SUBNET_COUNT }} \
+            --prefix "${{ env.JOB_PREFIX }}" \
             --output powershell \
             --file /tmp/test-powershell.ps1
 
@@ -733,8 +734,7 @@ jobs:
           echo "Script contents:"
           cat /tmp/test-powershell.ps1
 
-          # Customize the script with unique values
-          sed -i "s/\$Prefix = \"myproject\"/\$Prefix = \"${{ env.JOB_PREFIX }}\"/" /tmp/test-powershell.ps1
+          # Patch the location (no --location flag in the CLI yet)
           sed -i 's/$Location = "eastus"/$Location = "${{ env.AZURE_LOCATION }}"/' /tmp/test-powershell.ps1
 
           echo "Customized PowerShell script:"
@@ -1118,11 +1118,11 @@ jobs:
             --subnets 2 \
             --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
             --spoke-subnets "2,2,2" \
+            --prefix "${{ env.JOB_PREFIX }}" \
             --output cli \
             --file /tmp/deploy-vnet-peering-generated.sh
 
-          # Customize the script
-          sed -i "s/PREFIX=\"myproject\"/PREFIX=\"${{ env.JOB_PREFIX }}\"/" /tmp/deploy-vnet-peering-generated.sh
+          # Patch the location (no --location flag in the CLI yet)
           sed -i 's/LOCATION="eastus"/LOCATION="${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-peering-generated.sh
           chmod +x /tmp/deploy-vnet-peering-generated.sh
 
@@ -1516,11 +1516,11 @@ jobs:
             --subnets 2 \
             --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
             --spoke-subnets "2,2,2" \
+            --prefix "${{ env.JOB_PREFIX }}" \
             --output powershell \
             --file /tmp/deploy-vnet-peering-generated.ps1
 
-          # Customize the script
-          sed -i "s/\$Prefix = \"myproject\"/\$Prefix = \"${{ env.JOB_PREFIX }}\"/" /tmp/deploy-vnet-peering-generated.ps1
+          # Patch the location (no --location flag in the CLI yet)
           sed -i 's/$Location = "eastus"/$Location = "${{ env.AZURE_LOCATION }}"/' /tmp/deploy-vnet-peering-generated.ps1
 
           echo "Customized PowerShell script:"
