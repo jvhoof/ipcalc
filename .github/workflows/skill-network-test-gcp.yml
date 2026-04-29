@@ -25,7 +25,7 @@ on:
     paths:
       - 'skills/ipcalc-for-cloud/scripts/**'
       - 'skills/ipcalc-for-cloud/templates/gcp/**'
-      - '.github/workflows/network-test-gcp-vpc-python-skill.yml'
+      - '.github/workflows/skill-network-test-gcp.yml'
 
 env:
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.GCP_RESOURCE_PREFIX || 'ipcalc-test' }}

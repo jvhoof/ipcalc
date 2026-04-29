@@ -25,7 +25,7 @@ on:
     paths:
       - 'skills/ipcalc-for-cloud/scripts/**'
       - 'skills/ipcalc-for-cloud/templates/oracle/**'
-      - '.github/workflows/network-test-oci-vcn-python-skill.yml'
+      - '.github/workflows/skill-network-test-oci.yml'
 
 env:
   RESOURCE_PREFIX: ${{ github.event.inputs.prefix || vars.OCI_RESOURCE_PREFIX || 'ipcalc-test' }}
