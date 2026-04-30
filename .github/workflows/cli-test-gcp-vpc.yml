@@ -345,6 +345,13 @@ jobs:
           echo "  Spoke CIDRs: 10.1.0.0/16,10.2.0.0/16,10.3.0.0/16"
           echo "  Spoke Subnets: 2,2,2"
 
+          # Set unique names for this job
+          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
+          VPC_NAME="${JOB_PREFIX}-vpc"
+
+          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
+          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
+
           # Generate gcloud CLI script with VPC peering
           npm run cli -- \
             --provider gcp \
@@ -353,18 +360,11 @@ jobs:
             --spoke-cidrs "10.1.0.0/16,10.2.0.0/16,10.3.0.0/16" \
             --spoke-subnets "2,2,2" \
             --output gcloud \
+            --prefix "${JOB_PREFIX}" \
             --file /tmp/deploy-vpc-peering-generated.sh
 
-          # Set unique names for this job
-          JOB_PREFIX="${{ env.RESOURCE_PREFIX }}-${{ steps.unique-id.outputs.id }}"
-          VPC_NAME="${JOB_PREFIX}-vpc"
-
-          echo "JOB_PREFIX=$JOB_PREFIX" >> $GITHUB_ENV
-          echo "VPC_NAME=$VPC_NAME" >> $GITHUB_ENV
-
-          # Customize the script
+          # Patch the project ID placeholder
           sed -i "s/PROJECT_ID=\"your-project-id\"/PROJECT_ID=\"${{ secrets.GCP_PROJECT_ID }}\"/" /tmp/deploy-vpc-peering-generated.sh
-          sed -i "s/VPC_NAME=\"myproject-vpc\"/VPC_NAME=\"${VPC_NAME}\"/" /tmp/deploy-vpc-peering-generated.sh
           chmod +x /tmp/deploy-vpc-peering-generated.sh
 
           echo "Script contents:"
