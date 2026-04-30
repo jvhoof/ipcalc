@@ -935,7 +935,7 @@ def process_oracle_oci_template(template_content: str, data: Dict[str, Any]) -> 
         subnet_creation += f'  --display-name "${{VCN_NAME}}-subnet{idx}" \\\n'
         subnet_creation += f'  --dns-label "subnet{idx}" \\\n'
         subnet_creation += f'  --route-table-id "${{RT_ID}}" \\\n'
-        subnet_creation += f'  --security-list-ids \'["${{SL_ID}}"]\' \\\n'
+        subnet_creation += f'  --security-list-ids "[\\\"${{SL_ID}}\\\"]" \\\n'
         subnet_creation += f'  --query \'data.id\' \\\n'
         subnet_creation += f'  --raw-output)\n\n'
         subnet_creation += f'echo "Subnet {idx} created with ID: ${{SUBNET{idx}_ID}}"\n\n'
