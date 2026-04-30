@@ -322,6 +322,7 @@ jobs:
             --provider oracle \
             --cidr ${{ env.VCN_CIDR }} \
             --subnets ${{ env.SUBNET_COUNT }} \
+            --prefix "${{ env.JOB_PREFIX }}" \
             --output oci \
             --file /tmp/deploy-oci.sh
 
@@ -361,8 +362,7 @@ jobs:
 
           # Customise VCN name, DNS label, and compartment in generated script
           sed -i "s/COMPARTMENT_ID=\"ocid1.compartment.oc1..your-compartment-id\"/COMPARTMENT_ID=\"${{ secrets.OCI_COMPARTMENT_OCID }}\"/" /tmp/deploy-oci.sh
-          sed -i "s/VCN_NAME=\"myproject-vcn\"/VCN_NAME=\"${{ env.VCN_NAME }}\"/" /tmp/deploy-oci.sh
-          sed -i "s/VCN_DNS_LABEL=\"myprojectvcn\"/VCN_DNS_LABEL=\"${{ env.VCN_DNS_LABEL }}\"/" /tmp/deploy-oci.sh
+          sed -i "s/VCN_DNS_LABEL=\"[^\"]*\"/VCN_DNS_LABEL=\"${VCN_DNS_LABEL}\"/" /tmp/deploy-oci.sh
 
           echo "Running OCI CLI deployment script..."
           chmod +x /tmp/deploy-oci.sh
