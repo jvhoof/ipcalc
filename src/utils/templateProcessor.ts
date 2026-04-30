@@ -1151,7 +1151,7 @@ export function processOracleOCITemplate(templateContent: string, data: Template
     subnetCreation += `  --display-name "\${VCN_NAME}-subnet${index + 1}" \\\n`
     subnetCreation += `  --dns-label "subnet${index + 1}" \\\n`
     subnetCreation += `  --route-table-id "\${RT_ID}" \\\n`
-    subnetCreation += `  --security-list-ids '["\${SL_ID}"]' \\\n`
+    subnetCreation += `  --security-list-ids "[\\"\${SL_ID}\\"]" \\\n`
     subnetCreation += `  --query 'data.id' \\\n`
     subnetCreation += `  --raw-output)\n\n`
     subnetCreation += `echo "Subnet ${index + 1} created with ID: \${SUBNET${index + 1}_ID}"\n\n`
