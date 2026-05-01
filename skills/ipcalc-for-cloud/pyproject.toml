@@ -17,8 +17,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
-# No external runtime dependencies - only uses Python standard library
-dependencies = []
+dependencies = [
+    "py-d2>=1.0.1",
+]
 
 [project.optional-dependencies]
 dev = [

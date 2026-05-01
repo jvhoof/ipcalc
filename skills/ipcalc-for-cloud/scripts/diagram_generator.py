@@ -5,9 +5,62 @@ Azure D2 Diagram Generator
 Generates D2 diagram source code from ipcalc network data (VNets, subnets,
 resource groups, hub-spoke peering). Output can be rendered to SVG/PNG with
 the D2 CLI: d2 --layout=elk diagram.d2 diagram.svg
+
+Uses the py-d2 library for shape and connection construction. D2 class
+assignments and icon properties are not supported by py-d2 natively, so
+_AzureShape and _AzureConnection extend the base classes to add them.
+The header and classes block are emitted as raw D2 text since py-d2 has
+no support for top-level directives.
 """
 
+import subprocess
 from typing import Any
+
+from py_d2 import D2Connection, D2Diagram, D2Shape
+from py_d2.connection import Direction
+
+
+class _AzureShape(D2Shape):
+    """D2Shape with D2 class and icon support."""
+
+    def __init__(
+        self,
+        *args: Any,
+        d2_class: str | None = None,
+        icon: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._d2_class = d2_class
+        self._icon = icon
+
+    def lines(self) -> list[str]:
+        base = super().lines()
+        extras = []
+        if self._d2_class:
+            extras.append(f"class: {self._d2_class}")
+        if self._icon:
+            extras.append(f"icon: {self._icon}")
+        if not extras:
+            return base
+        if base[-1] == "}":
+            return base[:-1] + [f"  {e}" for e in extras] + ["}"]
+        # Leaf node with no block yet — open one.
+        return [base[0] + " {"] + [f"  {e}" for e in extras] + ["}"]
+
+
+class _AzureConnection(D2Connection):
+    """D2Connection with D2 class support."""
+
+    def __init__(self, *args: Any, d2_class: str | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._d2_class = d2_class
+
+    def lines(self) -> list[str]:
+        base = super().lines()
+        if self._d2_class:
+            return [base[0] + " {", f"  class: {self._d2_class}", "}"]
+        return base
 
 
 class AzureDiagramGenerator:
@@ -18,10 +71,8 @@ class AzureDiagramGenerator:
     def __init__(self, icon_base_url: str | None = None) -> None:
         self.ICON_BASE_URL = icon_base_url or self.DEFAULT_ICON_BASE_URL
 
-    # Icon paths relative to ICON_BASE_URL for the resource types ipcalc produces
     _ICON_PATHS: dict[str, str] = {
         "vnet":    "networking/10061-icon-service-Virtual-Networks.svg",
-        "subnet":  "networking/02742-icon-service-Subnet.svg",
         "peering": "other/01285-icon-service-Peerings.svg",
     }
 
@@ -30,27 +81,23 @@ class AzureDiagramGenerator:
 
         Args:
             data: Dict with keys: vnetCidr, subnets, peeringEnabled,
+                  namePrefix (optional, default "ipcalc"),
                   optionally spokeVNets (list of spoke dicts with cidr/subnets).
 
         Returns:
             D2 source code as a string.
         """
-        prefix = "myproject"
+        prefix = data.get("namePrefix") or "ipcalc"
         if data.get("peeringEnabled") and data.get("spokeVNets"):
-            body = self._generate_hub_spoke(data, prefix)
+            shapes, connections = self._build_hub_spoke(data, prefix)
         else:
-            body = self._generate_simple(data, prefix)
+            shapes, connections = self._build_simple(data, prefix)
 
-        return (
-            self._generate_header()
-            + "\n"
-            + self._generate_classes()
-            + "\n"
-            + body
-        )
+        body = str(D2Diagram(shapes=shapes, connections=connections))
+        return self._generate_header() + "\n" + self._generate_classes() + "\n" + body
 
     # ------------------------------------------------------------------
-    # Header / classes
+    # Header / classes  (raw D2 — py-d2 has no top-level directive support)
     # ------------------------------------------------------------------
 
     def _generate_header(self) -> str:
@@ -88,107 +135,118 @@ class AzureDiagramGenerator:
         )
 
     # ------------------------------------------------------------------
-    # Single VNet
+    # Shape builders
     # ------------------------------------------------------------------
 
-    def _generate_simple(self, data: dict[str, Any], prefix: str) -> str:
+    def _build_simple(
+        self, data: dict[str, Any], prefix: str
+    ) -> tuple[list[_AzureShape], list[_AzureConnection]]:
         rg_id = self._sanitize_id(f"{prefix}_rg")
-        rg_label = f"Resource Group: {prefix}-rg"
         vnet_id = self._sanitize_id(f"{prefix}_vnet")
-        vnet_label = f"VNet: {prefix}-vnet\\n{data['vnetCidr']}"
-
-        vnet_block = self._generate_vnet_block(
-            vnet_id, vnet_label, data["vnetCidr"], data["subnets"]
+        vnet = self._build_vnet_shape(
+            vnet_id,
+            f'"VNet: {prefix}-vnet\\n{data["vnetCidr"]}"',
+            data["subnets"],
         )
-        return self._generate_rg_block(rg_id, rg_label, vnet_block)
+        rg = _AzureShape(
+            name=rg_id,
+            label=f'"Resource Group: {prefix}-rg"',
+            shapes=[vnet],
+            d2_class="resource_group",
+        )
+        return [rg], []
 
-    # ------------------------------------------------------------------
-    # Hub-spoke topology
-    # ------------------------------------------------------------------
+    def _build_hub_spoke(
+        self, data: dict[str, Any], prefix: str
+    ) -> tuple[list[_AzureShape], list[_AzureConnection]]:
+        shapes: list[_AzureShape] = []
+        connections: list[_AzureConnection] = []
 
-    def _generate_hub_spoke(self, data: dict[str, Any], prefix: str) -> str:
-        lines: list[str] = []
-
-        # Hub RG + VNet
         hub_rg_id = "hub_rg"
         hub_vnet_id = "hub_vnet"
-        hub_vnet_label = f"Hub VNet\\n{data['vnetCidr']}"
-        hub_vnet_block = self._generate_vnet_block(
-            hub_vnet_id, hub_vnet_label, data["vnetCidr"], data["subnets"]
+        hub_vnet = self._build_vnet_shape(
+            hub_vnet_id,
+            f'"Hub VNet\\n{data["vnetCidr"]}"',
+            data["subnets"],
         )
-        lines.append(
-            self._generate_rg_block(hub_rg_id, "Resource Group: hub-rg", hub_vnet_block)
-        )
+        shapes.append(_AzureShape(
+            name=hub_rg_id,
+            label='"Resource Group: hub-rg"',
+            shapes=[hub_vnet],
+            d2_class="resource_group",
+        ))
 
-        # Spoke RGs + VNets
-        spoke_ids: list[tuple[str, str]] = []  # (rg_id, vnet_id)
         for spoke in data.get("spokeVNets", []):
             idx = spoke["index"]
             spoke_rg_id = f"spoke{idx}_rg"
             spoke_vnet_id = f"spoke{idx}_vnet"
-            spoke_vnet_label = f"Spoke {idx} VNet\\n{spoke['cidr']}"
-            spoke_vnet_block = self._generate_vnet_block(
-                spoke_vnet_id, spoke_vnet_label, spoke["cidr"], spoke["subnets"]
+            spoke_vnet = self._build_vnet_shape(
+                spoke_vnet_id,
+                f'"Spoke {idx} VNet\\n{spoke["cidr"]}"',
+                spoke["subnets"],
             )
-            rg_label = f"Resource Group: spoke{idx}-rg"
-            lines.append(
-                self._generate_rg_block(spoke_rg_id, rg_label, spoke_vnet_block)
+            shapes.append(_AzureShape(
+                name=spoke_rg_id,
+                label=f'"Resource Group: spoke{idx}-rg"',
+                shapes=[spoke_vnet],
+                d2_class="resource_group",
+            ))
+            connections.append(_AzureConnection(
+                f"{hub_rg_id}.{hub_vnet_id}",
+                f"{spoke_rg_id}.{spoke_vnet_id}",
+                label="VNet Peering",
+                direction=Direction.BOTH,
+                d2_class="peering",
+            ))
+
+        return shapes, connections
+
+    def _build_vnet_shape(
+        self, vnet_id: str, label: str, subnets: list[dict[str, Any]]
+    ) -> _AzureShape:
+        vnet_icon = f"{self.ICON_BASE_URL}/{self._ICON_PATHS['vnet']}"
+        subnet_shapes = [
+            _AzureShape(
+                name=self._sanitize_id(s["name"]),
+                label=f'"{self._subnet_label(s)}"',
+                d2_class="subnet",
             )
-            spoke_ids.append((spoke_rg_id, spoke_vnet_id))
-
-        # Peering edges (bidirectional hub <-> each spoke)
-        if spoke_ids:
-            lines.append("# VNet peering connections (bidirectional)\n")
-            for spoke_rg_id, spoke_vnet_id in spoke_ids:
-                lines.append(
-                    f"{hub_rg_id}.{hub_vnet_id} <-> "
-                    f"{spoke_rg_id}.{spoke_vnet_id}: "
-                    f"\"VNet Peering\" {{\n  class: peering\n}}\n"
-                )
-
-        return "\n".join(lines)
-
-    # ------------------------------------------------------------------
-    # Building blocks
-    # ------------------------------------------------------------------
-
-    def _generate_vnet_block(
-        self,
-        vnet_id: str,
-        label: str,
-        cidr: str,
-        subnets: list[dict[str, Any]],
-    ) -> str:
-        # VNet is a container (has children) so it cannot use shape:image.
-        # Subnets omit shape:image so D2 renders them as styled boxes with the icon inside.
-        icon_url = f"{self.ICON_BASE_URL}/{self._ICON_PATHS['subnet']}"
-        lines = [
-            f"{vnet_id}: \"{label}\" {{",
-            "  class: vnet",
+            for s in subnets
         ]
-        for subnet in subnets:
-            subnet_id = self._sanitize_id(subnet["name"])
-            subnet_label = self._subnet_label(subnet)
-            lines.append(
-                f"  {subnet_id}: \"{subnet_label}\" {{\n"
-                f"    class: subnet\n"
-                f"    icon: {icon_url}\n"
-                f"  }}"
-            )
-        lines.append("}")
-        return "\n".join(lines) + "\n"
+        return _AzureShape(
+            name=vnet_id,
+            label=label,
+            shapes=subnet_shapes,
+            d2_class="vnet",
+            icon=vnet_icon,
+        )
 
-    def _generate_rg_block(self, rg_id: str, label: str, vnet_block: str) -> str:
-        indented_vnet = "\n".join(
-            "  " + line if line else ""
-            for line in vnet_block.splitlines()
+    # ------------------------------------------------------------------
+    # SVG rendering  (py-d2 generates D2 text only; d2 CLI renders SVG)
+    # ------------------------------------------------------------------
+
+    def render_svg(self, d2_source: str, layout: str = "elk") -> str:
+        """Render D2 source to SVG using the d2 CLI.
+
+        Args:
+            d2_source: D2 diagram source code.
+            layout:    D2 layout engine (default: elk).
+
+        Returns:
+            SVG content as a string.
+
+        Raises:
+            FileNotFoundError: if the d2 binary is not on PATH.
+            subprocess.CalledProcessError: if d2 exits with a non-zero status.
+        """
+        result = subprocess.run(
+            ["d2", f"--layout={layout}", "-", "-"],
+            input=d2_source,
+            capture_output=True,
+            text=True,
+            check=True,
         )
-        return (
-            f"{rg_id}: \"{label}\" {{\n"
-            "  class: resource_group\n"
-            f"{indented_vnet}\n"
-            "}\n"
-        )
+        return result.stdout
 
     # ------------------------------------------------------------------
     # Helpers
@@ -205,9 +263,4 @@ class AzureDiagramGenerator:
         return result
 
     def _subnet_label(self, subnet: dict[str, Any]) -> str:
-        """Multi-line D2 label: name + CIDR + usable IP count."""
-        usable = subnet.get("usable_ips") or subnet.get("usableIPs", "")
-        if usable:
-            usable_str = f"{usable:,}" if isinstance(usable, int) else str(usable)
-            return f"{subnet['name']}\\n{subnet['cidr']}\\n{usable_str} usable IPs"
         return f"{subnet['name']}\\n{subnet['cidr']}"

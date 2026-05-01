@@ -1,12 +1,2 @@
 # Runtime dependencies for ipcalc-for-cloud skill
-# 
-# This skill only uses Python standard library modules:
-# - ipaddress
-# - argparse
-# - json
-# - typing
-# - math
-# - os
-# - sys
-#
-# No external packages are required for runtime.
+py-d2>=1.0.1

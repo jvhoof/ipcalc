@@ -19,7 +19,7 @@ def _make_subnet(name: str, cidr: str, usable: int, idx: int) -> dict:
     }
 
 
-def _single_vnet_data(cidr: str = "10.0.0.0/16", n: int = 4) -> dict:
+def _single_vnet_data(cidr: str = "10.0.0.0/16", n: int = 4, prefix: str = "myproject") -> dict:
     subnets = [
         _make_subnet(f"subnet{i}", f"10.{i * 64}.0.0/18", 16379, i)
         for i in range(1, n + 1)
@@ -29,6 +29,7 @@ def _single_vnet_data(cidr: str = "10.0.0.0/16", n: int = 4) -> dict:
         "subnets": subnets,
         "peeringEnabled": False,
         "spokeVNets": [],
+        "namePrefix": prefix,
     }
 
 
@@ -80,13 +81,11 @@ class TestAzureDiagramGeneratorSingleVNet(unittest.TestCase):
     def test_vnet_container(self):
         self.assertIn("myproject_vnet:", self.output)
         self.assertIn("class: vnet", self.output)
-        self.assertIn("shape: image", self.output)
+        self.assertIn("10061-icon-service-Virtual-Networks.svg", self.output)
         self.assertIn("10.0.0.0/16", self.output)
 
-    def test_subnet_icon_url(self):
-        # VNets are containers (no icon allowed); subnets carry the icon instead
-        self.assertIn("miiitch/skill-diagram-generators", self.output)
-        self.assertIn("Virtual-Networks-Subnets.png", self.output)
+    def test_subnet_has_no_icon(self):
+        self.assertNotIn("02742-icon-service-Subnet.svg", self.output)
 
     def test_four_subnets_present(self):
         for i in range(1, 5):
@@ -96,8 +95,8 @@ class TestAzureDiagramGeneratorSingleVNet(unittest.TestCase):
         # Mock data builds subnets as 10.{i*64}.0.0/18; subnet1 → 10.64.0.0/18
         self.assertIn("10.64.0.0/18", self.output)
 
-    def test_subnet_label_includes_usable_ips(self):
-        self.assertIn("16,379 usable IPs", self.output)
+    def test_subnet_label_excludes_usable_ips(self):
+        self.assertNotIn("usable IPs", self.output)
 
     def test_no_peering_edges_for_single_vnet(self):
         self.assertNotIn("<->", self.output)
@@ -136,6 +135,29 @@ class TestAzureDiagramGeneratorHubSpoke(unittest.TestCase):
         self.assertIn("10.2.0.0/16", self.output)
 
 
+class TestNamePrefix(unittest.TestCase):
+
+    def setUp(self):
+        self.gen = AzureDiagramGenerator()
+
+    def test_custom_prefix_used_in_ids(self):
+        output = self.gen.generate(_single_vnet_data(prefix="acme"))
+        self.assertIn("acme_rg:", output)
+        self.assertIn("acme_vnet:", output)
+
+    def test_default_prefix_is_ipcalc_when_absent(self):
+        data = _single_vnet_data()
+        del data["namePrefix"]
+        output = self.gen.generate(data)
+        self.assertIn("ipcalc_rg:", output)
+
+    def test_default_prefix_is_ipcalc_when_none(self):
+        data = _single_vnet_data()
+        data["namePrefix"] = None
+        output = self.gen.generate(data)
+        self.assertIn("ipcalc_rg:", output)
+
+
 class TestSanitizeId(unittest.TestCase):
 
     def setUp(self):
@@ -172,16 +194,10 @@ class TestSubnetLabel(unittest.TestCase):
         label = self.gen._subnet_label(subnet)
         self.assertIn("10.0.0.0/18", label)
 
-    def test_label_contains_formatted_usable_ips(self):
+    def test_label_excludes_usable_ips(self):
         subnet = _make_subnet("subnet1", "10.0.0.0/18", 16379, 1)
         label = self.gen._subnet_label(subnet)
-        self.assertIn("16,379 usable IPs", label)
-
-    def test_label_without_usable_ips(self):
-        subnet = {"name": "subnet1", "cidr": "10.0.0.0/18"}
-        label = self.gen._subnet_label(subnet)
-        self.assertIn("subnet1", label)
-        self.assertIn("10.0.0.0/18", label)
+        self.assertNotIn("usable IPs", label)
 
 
 if __name__ == "__main__":
