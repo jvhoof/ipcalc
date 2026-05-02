@@ -4,8 +4,13 @@ FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Install D2 (diagram renderer) — required for format=svg on /api/azure
+ARG TARGETARCH=amd64
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
-    curl -fsSL https://d2lang.com/install.sh | sh -s -- --tala=false && \
+    D2_VERSION="0.7.1" && \
+    curl -fsSL "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/d2-v${D2_VERSION}-linux-${TARGETARCH}.tar.gz" \
+        -o /tmp/d2.tar.gz && \
+    tar -xzf /tmp/d2.tar.gz -C /usr/local/bin --strip-components=2 "d2-v${D2_VERSION}-linux-${TARGETARCH}/bin/d2" && \
+    rm /tmp/d2.tar.gz && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
