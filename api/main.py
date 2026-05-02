@@ -44,6 +44,7 @@ AZURE_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
     'arm':            ('application/json',   'azuredeploy.json'),
     'powershell':     ('text/plain',         'deploy.ps1'),
     'd2':             ('text/plain',         'diagram.d2'),
+    'svg':            ('image/svg+xml',      'diagram.svg'),
 }
 
 AWS_FORMAT_CONFIG: dict[str, tuple[str, str]] = {
@@ -307,9 +308,19 @@ def generate_azure(
         **(({'namePrefix': prefix}) if prefix else {}),
     }
 
-    if format == 'd2':
+    if format in ('d2', 'svg'):
         icon_base_url = f"{request.base_url}api/icons"
-        code = AzureDiagramGenerator(icon_base_url=icon_base_url).generate(data)
+        generator = AzureDiagramGenerator(icon_base_url=icon_base_url)
+        d2_source = generator.generate(data)
+        if format == 'svg':
+            try:
+                code = generator.render_svg(d2_source)
+            except FileNotFoundError:
+                raise HTTPException(status_code=500, detail="D2 CLI is not installed on this server.")
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"D2 rendering failed: {exc}")
+        else:
+            code = d2_source
     else:
         try:
             code = process_template('azure', format, data, TEMPLATES_DIR)
