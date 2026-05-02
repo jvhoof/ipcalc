@@ -8,9 +8,9 @@ ARG TARGETARCH=amd64
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
     D2_VERSION="0.7.1" && \
     curl -fsSL "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/d2-v${D2_VERSION}-linux-${TARGETARCH}.tar.gz" \
-        -o /tmp/d2.tar.gz && \
-    tar -xzf /tmp/d2.tar.gz -C /usr/local/bin --strip-components=2 "d2-v${D2_VERSION}-linux-${TARGETARCH}/bin/d2" && \
-    rm /tmp/d2.tar.gz && \
+        | tar -xz -C /tmp && \
+    find /tmp -type f -name d2 -perm /111 -exec install -m 755 {} /usr/local/bin/d2 \; && \
+    rm -rf /tmp/d2-* && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
